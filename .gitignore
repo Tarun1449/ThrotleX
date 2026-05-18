@@ -1,0 +1,14 @@
+.env
+*.log
+.idea/
+target/
+.DS_Store
+application-local.yml
+application-dev.yml
+application-prod.yml
+*.pem
+*.key
+key
+newKey
+*.csv
+venv/
