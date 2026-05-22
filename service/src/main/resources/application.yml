@@ -1,0 +1,19 @@
+spring:
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password:
+      database: 0
+      ssl:
+        enabled: false
+      timeout: 300ms
+      connect-timeout: 500ms
+      lettuce:
+        pool:
+          enabled: true
+          max-active: 16
+          max-idle: 8
+          min-idle: 2
+          max-wait: 500ms
+          time-between-eviction-runs: 30s
