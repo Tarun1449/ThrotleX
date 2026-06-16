@@ -10,7 +10,7 @@ import org.springframework.data.redis.cache.RedisCache;
 import org.springframework.data.redis.cache.RedisCacheManager;
 
 import java.util.Collection;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Returns SyncFallbackCache for every cache name.
@@ -21,47 +21,80 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public class FallbackCacheManager implements CacheManager {
 
-    private static final Logger log = LoggerFactory.getLogger(FallbackCacheManager.class);
+    private static final Logger log =
+            LoggerFactory.getLogger(FallbackCacheManager.class);
 
-    private final RedisCacheManager  redisCacheManager;
-    private final NoOpCacheManager   noOpCacheManager = new NoOpCacheManager();
-    private final AtomicBoolean      redisAvailable   = new AtomicBoolean(true);
-    private final MeterRegistry      meterRegistry;
+    private final RedisCacheManager redisCacheManager;
+    private final NoOpCacheManager noOpCacheManager =
+            new NoOpCacheManager();
 
-    public FallbackCacheManager(RedisCacheManager redisCacheManager,  // ← RedisCacheManager (not CacheManager)
-                                MeterRegistry meterRegistry) {
+    private final MeterRegistry meterRegistry;
+    private final RedisHealthMonitor healthMonitor;
+
+    /**
+     * Create cache once, reuse forever.
+     */
+    private final ConcurrentHashMap<String, Cache> cacheMap =
+            new ConcurrentHashMap<>();
+
+    public FallbackCacheManager(
+            RedisCacheManager redisCacheManager,
+            MeterRegistry meterRegistry,
+            RedisHealthMonitor healthMonitor) {
+
         this.redisCacheManager = redisCacheManager;
-        this.meterRegistry     = meterRegistry;
+        this.meterRegistry = meterRegistry;
+        this.healthMonitor = healthMonitor;
+
         log.info("[FallbackCacheManager] Initialised.");
     }
 
     @Override
     public Cache getCache(String name) {
-        try {
-            // RedisCacheManager.getCache() returns RedisCache specifically
-            RedisCache redisCache = (RedisCache) redisCacheManager.getCache(name);
 
-            if (redisCache == null) {
-                log.warn("[FallbackCacheManager] No cache config found for '{}'. Using NoOp.", name);
-                return noOpCacheManager.getCache(name);
+        return cacheMap.computeIfAbsent(name, cacheName -> {
+
+            try {
+
+                RedisCache redisCache =
+                        (RedisCache) redisCacheManager.getCache(cacheName);
+
+                if (redisCache == null) {
+
+                    log.warn(
+                            "[FallbackCacheManager] No cache config found for '{}'",
+                            cacheName
+                    );
+
+                    return noOpCacheManager.getCache(cacheName);
+                }
+
+                log.info(
+                        "[FallbackCacheManager] Creating cache '{}'",
+                        cacheName
+                );
+
+                return new SyncFallbackCache(
+                        redisCache,
+                        healthMonitor,
+                        meterRegistry
+                );
+
+            } catch (Exception e) {
+
+                log.error(
+                        "[FallbackCacheManager] Failed creating cache '{}'",
+                        cacheName,
+                        e
+                );
+
+                return noOpCacheManager.getCache(cacheName);
             }
-
-            // SyncFallbackCache — handles Redis UP/DOWN + stampede protection
-            return new SyncFallbackCache(redisCache, redisAvailable, meterRegistry);
-
-        } catch (Exception e) {
-            log.warn("[FallbackCacheManager] Failed to get cache '{}'. Using NoOp. {}", name, e.getMessage());
-            redisAvailable.set(false);
-            return noOpCacheManager.getCache(name);
-        }
+        });
     }
 
     @Override
     public Collection<String> getCacheNames() {
         return redisCacheManager.getCacheNames();
-    }
-
-    public boolean isRedisAvailable() {
-        return redisAvailable.get();
     }
 }

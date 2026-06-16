@@ -17,3 +17,37 @@ spring:
           min-idle: 2
           max-wait: 500ms
           time-between-eviction-runs: 30s
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      redisRateLimiter:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 50
+        minimum-number-of-calls: 20
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 50
+        slow-call-duration-threshold: 200ms
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 5
+        automatic-transition-from-open-to-half-open-enabled: true
+
+  bulkhead:
+    instances:
+      redisRateLimiter:
+        max-concurrent-calls: 100
+        max-wait-duration: 20ms
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
+
+throttlex:
+  rate-limit:
+    fallback:
+      mode: FAIL_CLOSED
+      local:
+        max-requests-per-window: 20
+        window-seconds: 60
