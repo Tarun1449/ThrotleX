@@ -10,6 +10,7 @@ import org.springframework.data.redis.cache.RedisCacheManager;
 @Configuration
 public class CacheConfiguration {
 
+    
     @Bean
     @Primary
     public CacheManager cacheManager(
