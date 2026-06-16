@@ -8,7 +8,6 @@ import org.springframework.cache.CacheManager;
 import org.springframework.cache.support.NoOpCacheManager;
 import org.springframework.data.redis.cache.RedisCache;
 import org.springframework.data.redis.cache.RedisCacheManager;
-
 import java.util.Collection;
 import java.util.concurrent.ConcurrentHashMap;
 
