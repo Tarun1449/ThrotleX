@@ -28,7 +28,7 @@ public class FallbackCacheManager implements CacheManager {
             new NoOpCacheManager();
 
     private final MeterRegistry meterRegistry;
-    private final RedisHealthMonitor healthMonitor;
+    private final io.github.resilience4j.circuitbreaker.CircuitBreaker circuitBreaker;
 
     /**
      * Create cache once, reuse forever.
@@ -39,11 +39,11 @@ public class FallbackCacheManager implements CacheManager {
     public FallbackCacheManager(
             RedisCacheManager redisCacheManager,
             MeterRegistry meterRegistry,
-            RedisHealthMonitor healthMonitor) {
+            io.github.resilience4j.circuitbreaker.CircuitBreaker circuitBreaker) {
 
         this.redisCacheManager = redisCacheManager;
         this.meterRegistry = meterRegistry;
-        this.healthMonitor = healthMonitor;
+        this.circuitBreaker = circuitBreaker;
 
         log.info("[FallbackCacheManager] Initialised.");
     }
@@ -75,7 +75,7 @@ public class FallbackCacheManager implements CacheManager {
 
                 return new SyncFallbackCache(
                         redisCache,
-                        healthMonitor,
+                        circuitBreaker,
                         meterRegistry
                 );
 

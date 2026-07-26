@@ -1,6 +1,8 @@
 package com.throttlex.config.redis;
 
 import com.github.benmanes.caffeine.cache.Caffeine;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.Cache;
@@ -16,16 +18,16 @@ public class SyncFallbackCache implements Cache {
 
     private final RedisCache redisCache;
     private final CaffeineCache caffeineCache;
-    private final RedisHealthMonitor healthMonitor;
+    private final CircuitBreaker circuitBreaker;
     private final MeterRegistry meterRegistry;
 
     public SyncFallbackCache(
             RedisCache redisCache,
-            RedisHealthMonitor healthMonitor,
+            CircuitBreaker circuitBreaker,
             MeterRegistry meterRegistry) {
 
         this.redisCache = redisCache;
-        this.healthMonitor = healthMonitor;
+        this.circuitBreaker = circuitBreaker;
         this.meterRegistry = meterRegistry;
 
         this.caffeineCache = new CaffeineCache(
@@ -41,63 +43,37 @@ public class SyncFallbackCache implements Cache {
     @Override
     @Nullable
     public <T> T get(Object key, Callable<T> valueLoader) {
-
-        if (!healthMonitor.isRedisAvailable()) {
-
-            increment("cache.db.fallback");
-
-            return caffeineCache.get(
-                    key,
-                    () -> callDb(key, valueLoader)
-            );
-        }
-
         try {
-
-            ValueWrapper redisVal = redisCache.get(key);
+            ValueWrapper redisVal = circuitBreaker.executeSupplier(() -> redisCache.get(key));
 
             if (redisVal != null) {
-
                 increment("cache.redis.hit");
-
                 @SuppressWarnings("unchecked")
                 T value = (T) redisVal.get();
-
                 return value;
             }
-
-        } catch (Exception e) {
-
-            log.warn(
-                    "[SyncFallbackCache] Redis get failed for key '{}'. Falling back to DB.",
-                    key,
-                    e
-            );
-
+        } catch (CallNotPermittedException e) {
+            // Circuit is open, skip redis instantly
             increment("cache.db.fallback");
-
-            return callDb(key, valueLoader);
+            return callCaffeineWithLoader(key, valueLoader);
+        } catch (Exception e) {
+            log.warn("[SyncFallbackCache] Redis get failed for key '{}'. Falling back to DB.", key, e);
+            increment("cache.db.fallback");
+            return callCaffeineWithLoader(key, valueLoader);
         }
 
         increment("cache.redis.miss");
-
+        return callCaffeineWithLoader(key, valueLoader);
+    }
+    
+    private <T> T callCaffeineWithLoader(Object key, Callable<T> valueLoader) {
         return caffeineCache.get(key, () -> {
-
-            T result = valueLoader.call();
-
+            T result = callDb(key, valueLoader);
             try {
-
-                redisCache.put(key, result);
-
+                circuitBreaker.executeRunnable(() -> redisCache.put(key, result));
             } catch (Exception e) {
-
-                log.warn(
-                        "[SyncFallbackCache] Redis put failed for key '{}'.",
-                        key,
-                        e
-                );
+                log.warn("[SyncFallbackCache] Redis put failed for key '{}'.", key, e);
             }
-
             return result;
         });
     }
@@ -105,27 +81,19 @@ public class SyncFallbackCache implements Cache {
     @Override
     @Nullable
     public ValueWrapper get(Object key) {
-
-        if (!healthMonitor.isRedisAvailable()) {
-            return null;
-        }
-
         try {
-
-            ValueWrapper val = redisCache.get(key);
-
+            ValueWrapper val = circuitBreaker.executeSupplier(() -> redisCache.get(key));
             if (val != null) {
                 increment("cache.redis.hit");
             } else {
                 increment("cache.redis.miss");
             }
-
             return val;
-
-        } catch (Exception e) {
-
+        } catch (CallNotPermittedException e) {
             increment("cache.db.fallback");
-
+            return null;
+        } catch (Exception e) {
+            increment("cache.db.fallback");
             return null;
         }
     }
@@ -133,156 +101,86 @@ public class SyncFallbackCache implements Cache {
     @Override
     @Nullable
     public <T> T get(Object key, @Nullable Class<T> type) {
-
-        if (!healthMonitor.isRedisAvailable()) {
-            return null;
-        }
-
         try {
-
-            T val = redisCache.get(key, type);
-
+            T val = circuitBreaker.executeSupplier(() -> redisCache.get(key, type));
             if (val != null) {
                 increment("cache.redis.hit");
             } else {
                 increment("cache.redis.miss");
             }
-
             return val;
-
-        } catch (Exception e) {
-
+        } catch (CallNotPermittedException e) {
             increment("cache.db.fallback");
-
+            return null;
+        } catch (Exception e) {
+            increment("cache.db.fallback");
             return null;
         }
     }
 
     @Override
     public void put(Object key, @Nullable Object value) {
-
         caffeineCache.put(key, value);
-
-        if (!healthMonitor.isRedisAvailable()) {
-            return;
-        }
-
         try {
-
-            redisCache.put(key, value);
-
+            circuitBreaker.executeRunnable(() -> redisCache.put(key, value));
+        } catch (CallNotPermittedException e) {
+            // Circuit open, do nothing
         } catch (Exception e) {
-
-            log.warn(
-                    "[SyncFallbackCache] Redis put failed for key '{}'.",
-                    key,
-                    e
-            );
+            log.warn("[SyncFallbackCache] Redis put failed for key '{}'.", key, e);
         }
     }
 
     @Override
     public void evict(Object key) {
-
         caffeineCache.evict(key);
-
-        if (!healthMonitor.isRedisAvailable()) {
-            return;
-        }
-
         try {
-
-            redisCache.evict(key);
-
+            circuitBreaker.executeRunnable(() -> redisCache.evict(key));
+        } catch (CallNotPermittedException e) {
+            // Circuit open
         } catch (Exception e) {
-
-            log.warn(
-                    "[SyncFallbackCache] Redis evict failed for key '{}'.",
-                    key,
-                    e
-            );
+            log.warn("[SyncFallbackCache] Redis evict failed for key '{}'.", key, e);
         }
     }
 
     @Override
     @Nullable
-    public ValueWrapper putIfAbsent(
-            Object key,
-            @Nullable Object value) {
-
+    public ValueWrapper putIfAbsent(Object key, @Nullable Object value) {
         caffeineCache.put(key, value);
-
-        if (!healthMonitor.isRedisAvailable()) {
-            return null;
-        }
-
         try {
-
-            return redisCache.putIfAbsent(key, value);
-
+            return circuitBreaker.executeSupplier(() -> redisCache.putIfAbsent(key, value));
+        } catch (CallNotPermittedException e) {
+            return null;
         } catch (Exception e) {
-
-            log.warn(
-                    "[SyncFallbackCache] Redis putIfAbsent failed for key '{}'.",
-                    key,
-                    e
-            );
-
+            log.warn("[SyncFallbackCache] Redis putIfAbsent failed for key '{}'.", key, e);
             return null;
         }
     }
 
     @Override
     public boolean evictIfPresent(Object key) {
-
         caffeineCache.evictIfPresent(key);
-
-        if (!healthMonitor.isRedisAvailable()) {
-            return false;
-        }
-
         try {
-
-            return redisCache.evictIfPresent(key);
-
+            return circuitBreaker.executeSupplier(() -> redisCache.evictIfPresent(key));
         } catch (Exception e) {
-
             return false;
         }
     }
 
     @Override
     public void clear() {
-
         caffeineCache.clear();
-
-        if (!healthMonitor.isRedisAvailable()) {
-            return;
-        }
-
         try {
-
-            redisCache.clear();
-
+            circuitBreaker.executeRunnable(redisCache::clear);
         } catch (Exception ignored) {
         }
     }
 
     @Override
     public boolean invalidate() {
-
         caffeineCache.invalidate();
-
-        if (!healthMonitor.isRedisAvailable()) {
-            return false;
-        }
-
         try {
-
-            return redisCache.invalidate();
-
+            return circuitBreaker.executeSupplier(redisCache::invalidate);
         } catch (Exception e) {
-
             return false;
         }
     }
@@ -298,31 +196,17 @@ public class SyncFallbackCache implements Cache {
     }
 
     @Nullable
-    private <T> T callDb(
-            Object key,
-            Callable<T> valueLoader) {
-
+    private <T> T callDb(Object key, Callable<T> valueLoader) {
         try {
-
             return valueLoader.call();
-
         } catch (Exception e) {
-
-            throw new ValueRetrievalException(
-                    key,
-                    valueLoader,
-                    e
-            );
+            throw new ValueRetrievalException(key, valueLoader, e);
         }
     }
 
     private void increment(String metric) {
-
         if (meterRegistry != null) {
-
-            meterRegistry
-                    .counter(metric, "cache", getName())
-                    .increment();
+            meterRegistry.counter(metric, "cache", getName()).increment();
         }
     }
 }

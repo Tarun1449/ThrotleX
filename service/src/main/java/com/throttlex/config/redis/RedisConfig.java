@@ -87,23 +87,5 @@ public class RedisConfig {
             builder.useSsl();
         }
     }
-    @Bean
-    public RedisCacheManager redisCacheManager(
-            LettuceConnectionFactory connectionFactory) {
 
-        RedisSerializer<Object> serializer =
-                RedisSerializer.json();
-
-        RedisCacheConfiguration config =
-                RedisCacheConfiguration.defaultCacheConfig()
-                        .entryTtl(Duration.ofMinutes(30))
-                        .serializeValuesWith(
-                                RedisSerializationContext.SerializationPair
-                                        .fromSerializer(serializer)
-                        );
-
-        return RedisCacheManager.builder(connectionFactory)
-                .cacheDefaults(config)
-                .build();
-    }
 }
