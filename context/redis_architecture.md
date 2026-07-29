@@ -50,5 +50,12 @@ When a user requests a URL:
         * If Hit: Return value.
         * If Miss or Exception: Fetch from PostgreSQL, attempt to save to Redis asynchronously, return.
 
+## 4. Rate Limiting Fallback Strategy
+If Redis crashes, our centralized Rate Limiter goes down. To handle this, we implement the **Local Fallback (Graceful Degradation)** strategy.
+
+* **Fail-Closed by Default:** We do not want to "Fail Open" and allow a DDoS attack to crush our PostgreSQL database if Redis is down.
+* **Local In-Memory Limiting:** If the circuit breaker opens, we catch the exception and immediately switch to a **Local In-Memory Rate Limiter** running directly on the Spring Boot server (configured in `application.yml`). 
+* **The Result:** We maintain high availability so legitimate users can still click shortened URLs, while still offering "best-effort" protection against malicious traffic spikes until Redis recovers.
+
 ## Conclusion
 This architecture guarantees that the application can sustain millions of reads with predictable latency, seamlessly surviving both massive viral traffic spikes and catastrophic Redis infrastructure outages.
