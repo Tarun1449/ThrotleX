@@ -71,7 +71,6 @@ public class RedisConfig {
 
         LettuceClientConfiguration.LettuceClientConfigurationBuilder builder =
                 LettuceClientConfiguration.builder();
-        applyCommonClientSettings(builder);
         return builder.build();
     }
 
