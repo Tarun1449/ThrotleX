@@ -2,6 +2,28 @@ spring:
   threads:
     virtual:
       enabled: true
+  datasource:
+    url: jdbc:postgresql://localhost:5432/throttlex?options=-c%20statement_timeout=10000
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 30
+      minimum-idle: 10
+      connection-timeout: 5000     # 5 seconds
+      idle-timeout: 300000         # 5 minutes (Must be less than max-lifetime)
+      max-lifetime: 600000         # 10 minutes
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+      jakarta:
+        persistence:
+          query:
+            timeout: 10000         # 10 seconds JPA query timeout
   kafka:
     bootstrap-servers: localhost:9092
     producer:
