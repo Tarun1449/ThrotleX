@@ -1,15 +1,19 @@
-epackage com.throttlex.urlshortener.util;
+package com.throttlex.urlshortener.util;
 
-import org.springframework.beans.factory.annotation.Value;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.security.SecureRandom;
 import java.time.Instant;
+import java.util.Enumeration;
 
+@Slf4j
 @Component
 public class SnowflakeIdGenerator {
 
-    // Custom Epoch: Jan 1, 2026 00:00:00 UTC (1767225600000L)
-    // Using a custom epoch allows the timestamp to fit in 41 bits for a longer time.
+    // Custom Epoch: Jan 1, 2026 00:00:00 UTC
     private static final long CUSTOM_EPOCH = 1767225600000L;
 
     // Bit lengths
@@ -28,59 +32,65 @@ public class SnowflakeIdGenerator {
     private long sequence = 0L;
     private long lastTimestamp = -1L;
 
-    /**
-     * Initializes the generator. Node ID can be passed from application.yml
-     * Defaulting to 1 if not provided, but in a real distributed system,
-     * every instance MUST have a unique NODE_ID.
-     */
-    public SnowflakeIdGenerator(@Value("${throttlex.node-id:1}") long nodeId) {
-        if (nodeId < 0 || nodeId > MAX_NODE_ID) {
-            throw new IllegalArgumentException(String.format("Node ID must be between 0 and %d", MAX_NODE_ID));
-        }
-        this.nodeId = nodeId;
+    public SnowflakeIdGenerator() {
+        this.nodeId = generateNodeId();
+        log.info("SnowflakeIdGenerator initialized with Node ID: {}", this.nodeId);
     }
 
     /**
-     * Generates a new unique Snowflake ID. Thread-safe.
+     * Tension-Free Node ID Generation!
+     * Attempts to get the MAC address. If it fails, falls back to the IP address.
+     * If that fails, falls back to a SecureRandom number.
+     * No YAML config or root access needed.
      */
+    private long generateNodeId() {
+        long id;
+        try {
+            InetAddress ip = InetAddress.getLocalHost();
+            NetworkInterface network = NetworkInterface.getByInetAddress(ip);
+            
+            if (network != null && network.getHardwareAddress() != null) {
+                // Use MAC Address
+                byte[] mac = network.getHardwareAddress();
+                id = ((0x000000FF & (long) mac[mac.length - 2]) | (0x0000FF00 & (((long) mac[mac.length - 1]) << 8))) >> 6;
+            } else {
+                // Fallback to IP Address Hash
+                id = Math.abs(ip.getHostAddress().hashCode());
+            }
+        } catch (Exception e) {
+            log.warn("Could not determine MAC/IP Address for Node ID. Falling back to SecureRandom.", e);
+            id = new SecureRandom().nextInt((int) MAX_NODE_ID + 1);
+        }
+        return id & MAX_NODE_ID;
+    }
+
     public synchronized long nextId() {
         long currentTimestamp = timestamp();
 
         if (currentTimestamp < lastTimestamp) {
-            throw new IllegalStateException("Clock moved backwards. Refusing to generate id for " + (lastTimestamp - currentTimestamp) + " milliseconds.");
+            throw new IllegalStateException("Clock moved backwards.");
         }
 
         if (currentTimestamp == lastTimestamp) {
-            // Same millisecond, increment sequence
             sequence = (sequence + 1) & MAX_SEQUENCE;
             if (sequence == 0) {
-                // Sequence overflow, wait for the next millisecond
                 currentTimestamp = waitNextMillis(currentTimestamp);
             }
         } else {
-            // New millisecond, reset sequence
             sequence = 0L;
         }
 
         lastTimestamp = currentTimestamp;
 
-        // Pack the bits together
         return ((currentTimestamp - CUSTOM_EPOCH) << TIMESTAMP_SHIFT)
                 | (nodeId << NODE_ID_SHIFT)
                 | sequence;
     }
 
-    /**
-     * Utility method to extract the Epoch Milliseconds from a generated Snowflake ID.
-     * This is used by the PostgreSQL Partitioning routing logic!
-     */
     public static long extractTimestamp(long snowflakeId) {
         return (snowflakeId >> TIMESTAMP_SHIFT) + CUSTOM_EPOCH;
     }
 
-    /**
-     * Utility method to extract an Instant from a generated Snowflake ID.
-     */
     public static Instant extractInstant(long snowflakeId) {
         return Instant.ofEpochMilli(extractTimestamp(snowflakeId));
     }

@@ -1,6 +1,7 @@
-package com.throttlex.model.entity;
+package com.throttlex.ratelimit.entity;
 
 import com.throttlex.common.entity.BaseEntity;
+import com.throttlex.urlshortener.entity.Url;
 import jakarta.persistence.*;
 import lombok.*;
 

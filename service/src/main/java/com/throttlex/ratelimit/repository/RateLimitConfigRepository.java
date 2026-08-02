@@ -1,6 +1,6 @@
-package com.throttlex.repository;
+package com.throttlex.ratelimit.repository;
 
-import com.throttlex.model.entity.RateLimitConfig;
+import com.throttlex.ratelimit.entity.RateLimitConfig;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

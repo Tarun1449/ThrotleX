@@ -1,6 +1,6 @@
-package com.throttlex.repository;
+package com.throttlex.urlshortener.repository;
 
-import com.throttlex.model.entity.Url;
+import com.throttlex.urlshortener.entity.Url;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
