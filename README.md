@@ -33,6 +33,7 @@ graph TD
     API -->|Partition-Pruned Query| PG[(PostgreSQL partitioned by Month)]
     
     Kafka --> Analytics[Analytics Consumer Service]
+    Analytics -->|Batch Insert| ClickHouse[(ClickHouse OLAP)]
 ```
 
 ---
@@ -68,6 +69,15 @@ Unlike basic global rate limiters, ThrottleX features a hand-written, deeply int
   - **Token Bucket:** Extremely fast, great for bursty traffic.
   - **Sliding Window:** Highly accurate, prevents boundary-spike attacks.
 - **Atomic Execution:** The algorithms are enforced across distributed nodes using atomic **Redis Lua Scripts**, guaranteeing zero race conditions even at extreme concurrency.
+
+### 5. Asynchronous Analytics Pipeline (Kafka & ClickHouse)
+A URL Shortener is essentially an analytics engine disguised as a link router. ThrottleX is built to process tens of thousands of click events per second without ever blocking the user's redirect.
+- **Fire-and-Forget Kafka Producer:** When a user hits the `GET` redirect endpoint, the Spring Boot API fires a lightweight, asynchronous JSON event into Apache Kafka using Virtual Threads (`acks=1`). This guarantees that analytics tracking never adds latency to the HTTP 307 Redirect.
+- **ClickHouse (OLAP) Database:** The `Analytics Consumer Service` reads batches of events from Kafka and flushes them into **ClickHouse**, a columnar database engineered for extreme speed analytical queries.
+- **What We Track:**
+  - **URL-Wise Analytics:** Time-series aggregations (clicks per minute/hour/day), Referrer tracking (Social Media, Direct, Email), Geo-location/Country data, and Device/Browser telemetry.
+  - **Overall Platform Analytics:** Global traffic volume, unique user tracking, and active URL velocity.
+- **Why ClickHouse?** While PostgreSQL is perfect for Transactional (OLTP) URL creation, it would choke trying to sum millions of click events. ClickHouse uses Materialized Views and columnar compression to execute complex `GROUP BY` aggregations on billions of rows in milliseconds.
 
 ---
 
