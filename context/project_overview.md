@@ -28,7 +28,23 @@ We only use CDC (Change Data Capture) if we need to sync core metadata (like URL
 ### 3. Graceful Degradation (Rate Limiting)
 If the primary Rate Limiting Engine (Redis) crashes, the system is configured to use a **Local In-Memory Fallback** (Fail-Closed globally, but Fail-Open locally via `application.yml` configs). This keeps the system online for legitimate users while still providing best-effort protection against massive DDoS attacks.
 
+### 4. Domain-Driven Design (DDD) Structure
+To prevent the monolithic bloat of global `model` and `repository` packages, Throttlex strictly enforces Domain-Driven Design. 
+- The `urlshortener` package encapsulates all URL-specific Entities, Repositories, Services, and Controllers.
+- The `ratelimit` package encapsulates all rate-limiting specific configurations and algorithms.
+This allows for clean microservice extraction in the future if necessary.
+
+### 5. PostgreSQL Partitioning & Snowflake IDs
+To handle billions of rows without breaking PostgreSQL's B-Tree indexes, we utilize Date-Range Partitioning. Because standard UUIDs prevent partition pruning, we use a custom **64-bit Snowflake ID Generator** which is then compressed into a Base62 Short Code.
+- **Tension-Free Startup:** The Snowflake Node ID is generated autonomously by hashing the container's MAC/IP address, completely bypassing the need for Redis or DevOps configuration during startup.
+👉 **Detailed Context:** For a complete breakdown of this math and how it enables $O(1)$ partition pruning, read [`postgres_partitioning_architecture.md`](./postgres_partitioning_architecture.md).
+
 ## Next Development Steps
-We are currently building out the core PostgreSQL Entities and Repositories to support the business logic:
-- `Url` (The shortened link data).
-- `RateLimitConfig` (The specific algorithm and constraints chosen by the user for a URL).
+We have successfully completed the foundational layer:
+- **Core Entities & Repositories** are strictly encapsulated using DDD.
+- **Snowflake & Base62 Utilities** are highly optimized and fully autonomous.
+- **Kafka & Redis Configurations** are wired into the infrastructure.
+
+Next, we are building the Business Logic Tier:
+- `UrlShortenerService` (Handling Synchronous DB Writes & Collision Retries).
+- `UrlShortenerController` (Handling HTTP 201 Creation and HTTP 307 Redirections).

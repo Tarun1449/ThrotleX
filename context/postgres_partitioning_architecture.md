@@ -19,7 +19,13 @@ The Snowflake ID is constructed using bitwise operations:
 This 64-bit integer is then encoded into a **Base62 String**. 
 The Base62 String becomes the actual Short URL (e.g., `Xy7bA2`).
 
-### 2. Real-Time Partition Selection (Read Path)
+### 2. Partition Selection Strategy (Table Structure)
+To support this architecture, PostgreSQL is configured using **Declarative Partitioning** (`PARTITION BY RANGE`).
+Instead of creating a new partition for every day (which would create too many partitions and slow down the planner), or every year (which would make the partitions too large for RAM), Throttlex uses **Monthly Partitions**.
+- Example Partitions: `urls_2026_01`, `urls_2026_02`, etc.
+- Each partition will easily hold ~100 million records without index bloat.
+
+### 3. Real-Time Partition Selection (Read Path)
 When an HTTP request comes in for a Short URL:
 1. The Java application decodes the Base62 String back into the original 64-bit Snowflake `Long`.
 2. The application performs a **Bitwise Right Shift (`>> 22`)** to strip away the Sequence and Node ID, extracting the exact Epoch Timestamp (in milliseconds).
