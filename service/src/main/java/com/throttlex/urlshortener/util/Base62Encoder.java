@@ -1,8 +1,5 @@
 package com.throttlex.urlshortener.util;
 
-import org.springframework.stereotype.Component;
-
-@Component
 public class Base62Encoder {
 
     private static final String ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
@@ -11,7 +8,7 @@ public class Base62Encoder {
     /**
      * Encodes a Long (Snowflake ID) into a Base62 String.
      */
-    public String encode(long value) {
+    public static String encode(long value) {
         if (value == 0) {
             return String.valueOf(ALPHABET.charAt(0));
         }
@@ -29,7 +26,7 @@ public class Base62Encoder {
     /**
      * Decodes a Base62 String back into a Long (Snowflake ID).
      */
-    public long decode(String base62) {
+    public static long decode(String base62) {
         long result = 0;
         int length = base62.length();
 
