@@ -1,6 +1,7 @@
 package com.throttlex.urlshortener.entity;
 
 import com.throttlex.common.entity.BaseEntity;
+import com.throttlex.ratelimit.entity.RateLimitConfig;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -27,5 +28,5 @@ public class Url extends BaseEntity {
     private Instant expiresAt;
 
     @OneToOne(mappedBy = "url", cascade = CascadeType.ALL, fetch = FetchType.LAZY, optional = true)
-    private com.throttlex.ratelimit.entity.RateLimitConfig rateLimitConfig;
+    private RateLimitConfig rateLimitConfig;
 }
