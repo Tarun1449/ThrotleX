@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  # 1. Core Transactional Database (OLTP)
+  postgres:
+    image: postgres:16-alpine
+    container_name: throttlex-postgres
+    environment:
+      POSTGRES_USER: throttlex_user
+      POSTGRES_PASSWORD: throttlex_password
+      POSTGRES_DB: throttlex_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # 2. Caching & Rate Limiting Engine
+  redis:
+    image: redis:7-alpine
+    container_name: throttlex-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  # 3. Message Broker (Analytics Pipeline) - using KRaft mode (No Zookeeper)
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: throttlex-kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      CLUSTER_ID: "5L6g3nShT-eMCtK--X86sw"
+    ports:
+      - "9094:9094"
+    volumes:
+      - kafka_data:/bitnami/kafka
+    restart: unless-stopped
+
+  # 4. Analytics Database (OLAP)
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest-alpine
+    container_name: throttlex-clickhouse
+    ports:
+      - "8123:8123"  # HTTP interface
+      - "9000:9000"  # Native client interface
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    restart: unless-stopped
+
+  # 5. Frontend Placeholder (For your Vibe-Coded UI)
+  # Uncomment this block once you have your Next.js/React Dockerfile ready.
+  # frontend:
+  #   build: ./frontend
+  #   container_name: throttlex-frontend
+  #   ports:
+  #     - "3000:3000"
+  #   depends_on:
+  #     - postgres
+  #     - redis
+  #     - kafka
+
+volumes:
+  postgres_data:
+  kafka_data:
+  clickhouse_data:
