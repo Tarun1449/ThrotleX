@@ -51,7 +51,23 @@ services:
       - clickhouse_data:/var/lib/clickhouse
     restart: unless-stopped
 
-  # 5. Frontend Placeholder (For your Vibe-Coded UI)
+  # 5. ThrottleX Core API (Spring Boot)
+  api:
+    build: ./service
+    container_name: throttlex-api
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://throttlex-postgres:5432/throttlex_db
+      - SPRING_DATA_REDIS_HOST=throttlex-redis
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=throttlex-kafka:9092
+    depends_on:
+      - postgres
+      - redis
+      - kafka
+
+  # 6. Frontend Placeholder (For your Vibe-Coded UI)
   # Uncomment this block once you have your Next.js/React Dockerfile ready.
   # frontend:
   #   build: ./frontend
@@ -59,9 +75,7 @@ services:
   #   ports:
   #     - "3000:3000"
   #   depends_on:
-  #     - postgres
-  #     - redis
-  #     - kafka
+  #     - api
 
 volumes:
   postgres_data:
