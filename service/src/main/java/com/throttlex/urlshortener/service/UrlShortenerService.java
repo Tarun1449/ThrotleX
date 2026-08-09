@@ -4,11 +4,15 @@ import com.throttlex.urlshortener.dto.CreateUrlRequest;
 import com.throttlex.urlshortener.dto.UrlCacheDto;
 import com.throttlex.urlshortener.dto.UrlResponse;
 import com.throttlex.urlshortener.entity.Url;
+import com.throttlex.urlshortener.repository.BloomFilterOutboxRepository;
 import com.throttlex.urlshortener.repository.UrlProjection;
 import com.throttlex.urlshortener.repository.UrlRepository;
 import com.throttlex.urlshortener.util.Base62Encoder;
 import com.throttlex.urlshortener.util.SnowflakeIdGenerator;
-import lombok.RequiredArgsConstructor;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RBloomFilter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.CachePut;
 import org.springframework.cache.annotation.Cacheable;
@@ -21,19 +25,36 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 
+@Slf4j
 @Service
-@RequiredArgsConstructor
 public class UrlShortenerService {
 
     private final UrlRepository urlRepository;
     private final SnowflakeIdGenerator snowflakeIdGenerator;
-    
-    // Inject self to bypass Spring AOP proxy limitations for internal method calls
+    private final RBloomFilter<String> urlBloomFilter;
+    private final CircuitBreaker circuitBreaker;
+    private final BloomFilterWarmupService warmupService;
+    private final BloomFilterOutboxRepository outboxRepository;
+
     @Autowired
     @Lazy
     private UrlShortenerService self;
 
     private static final ZoneId IST_ZONE = ZoneId.of("Asia/Kolkata");
+
+    public UrlShortenerService(UrlRepository urlRepository,
+                               SnowflakeIdGenerator snowflakeIdGenerator,
+                               RBloomFilter<String> urlBloomFilter,
+                               CircuitBreakerRegistry circuitBreakerRegistry,
+                               BloomFilterWarmupService warmupService,
+                               BloomFilterOutboxRepository outboxRepository) {
+        this.urlRepository = urlRepository;
+        this.snowflakeIdGenerator = snowflakeIdGenerator;
+        this.urlBloomFilter = urlBloomFilter;
+        this.circuitBreaker = circuitBreakerRegistry.circuitBreaker("redisRateLimiter");
+        this.warmupService = warmupService;
+        this.outboxRepository = outboxRepository;
+    }
 
     @Transactional
     public UrlResponse createShortUrl(CreateUrlRequest request) {
@@ -54,6 +75,14 @@ public class UrlShortenerService {
 
         urlRepository.save(url);
         
+        // Add to Bloom Filter (Fail-Safe: If Redis is full, save to Outbox)
+        try {
+            circuitBreaker.executeRunnable(() -> urlBloomFilter.add(shortCode));
+        } catch (Exception e) {
+            log.warn("Bloom filter add failed (Redis down?), saving to Outbox. ShortCode: {}", shortCode);
+            outboxRepository.save(new com.throttlex.urlshortener.entity.BloomFilterOutbox(shortCode));
+        }
+        
         // Write-Through to Redis Cache instantly!
         self.pushToCache(shortCode, new UrlCacheDto(url.getOriginalUrl(), url.getExpiresAt()));
 
@@ -72,7 +101,28 @@ public class UrlShortenerService {
 
     @Transactional(readOnly = true)
     public String getOriginalUrl(String shortCode) {
-        // Fetch from Redis OR Postgres (Read-Through Cache)
+        // 1. Check Bloom Filter first (O(1) time complexity)
+        boolean mightExist = true; // Fail-Open: Assume it exists if Redis crashes
+
+        // If Redis is actively down, OR we are syncing the Outbox via Kafka, bypass the Bloom Filter
+        if (circuitBreaker.getState() != CircuitBreaker.State.CLOSED || warmupService.isWarmup()) {
+            mightExist = true; 
+        } else {
+            try {
+                mightExist = circuitBreaker.executeSupplier(() -> urlBloomFilter.contains(shortCode));
+            } catch (Exception e) {
+                // Redis is down! We must not crash the API. 
+                // We bypass the Bloom Filter and fallback to standard caching/DB behavior.
+                mightExist = true;
+            }
+        }
+
+        // If it returns false, the shortCode DEFINITELY does not exist. Stop immediately!
+        if (!mightExist) {
+            throw new RuntimeException("URL not found");
+        }
+        
+        // 2. Fetch from Redis OR Postgres (Read-Through Cache)
         UrlCacheDto cachedUrl = self.getCachedUrl(shortCode);
 
         // Validate expiration here so even cached items are correctly validated!

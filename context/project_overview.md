@@ -19,7 +19,8 @@ Throttlex is an enterprise-grade URL Shortener built with high throughput and st
 ### 1. High Availability Caching & Redis Integration
 Because Redis is central to both caching and rate limiting, the system is designed to survive complete Redis failure gracefully.
 We use a combination of Resilience4j for circuit breaking (Fail-Fast) and Caffeine for synchronous locking (Stampede protection). 
-👉 **Detailed Context:** For a complete understanding of how this operates, please read [`redis_architecture.md`](./redis_architecture.md) in this folder. It covers the Fallback strategies, Lettuce Pooling, and Half-Open Live Testing configurations.
+We also employ a **Redisson Distributed Bloom Filter** to completely eliminate Cache Penetration attacks by instantly rejecting invalid short codes without hitting the database.
+👉 **Detailed Context:** For a complete understanding of how this operates, please read [`redis_architecture.md`](./redis_architecture.md), [`bloom_filter_architecture.md`](./bloom_filter_architecture.md), and our advanced guide on [`redis_failure_handling.md`](./redis_failure_handling.md) in this folder.
 
 ### 2. Analytics Architecture (Event Sourcing vs CDC)
 To handle viral traffic, we do **not** write raw click events to PostgreSQL. Instead, the Spring Boot application will shoot raw click events directly into **Kafka** (Direct Publish / Event Sourcing). ClickHouse will then consume these events natively.

@@ -17,8 +17,11 @@ services:
   redis:
     image: redis:7-alpine
     container_name: throttlex-redis
+    command: redis-server --appendonly yes
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
     restart: unless-stopped
 
   # 3. Message Broker (Analytics Pipeline) - using KRaft mode (No Zookeeper)
@@ -116,3 +119,4 @@ volumes:
   clickhouse_data:
   prometheus_data:
   grafana_data:
+  redis_data:

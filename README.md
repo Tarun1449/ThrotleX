@@ -59,6 +59,7 @@ To handle 10,000+ reads per second without melting the database, ThrottleX uses 
 - **L1 Cache (Caffeine):** An ultra-fast, in-memory local cache on the JVM. Absorbs the highest velocity traffic instantly without network hops.
 - **L2 Cache (Redis):** The distributed cache shared across all API nodes.
 - **Cache Stampede Protection (`sync = true`):** If a viral URL expires from the cache, 10,000 requests might hit the database simultaneously (Thundering Herd). ThrottleX solves this by utilizing Spring's `@Cacheable(sync = true)`. This forces threads to wait at the JVM level—only *one* thread is allowed to query PostgreSQL, while the other 9,999 threads wait for the cache to be repopulated, fully protecting the database from I/O spikes.
+- **Distributed Bloom Filter (Cache Penetration Protection):** To prevent malicious bots from bypassing the cache by requesting millions of non-existent URLs, ThrottleX leverages a **Redisson Distributed Bloom Filter**. Operating in $O(1)$ time and consuming merely ~119MB of Redis memory for 100 Million URLs, it instantly drops invalid requests before they ever touch the caching layer or PostgreSQL.
 - **Resilience4j Circuit Breaking:** To prevent **Cascading Failures** if the Redis cluster experiences an outage, all Redis calls are wrapped in a Circuit Breaker.
   - **OPEN:** If Redis failure rates exceed 50% or latency spikes above 200ms, the circuit trips. It instantly blocks Redis calls and executes a **Fallback Method** (querying PostgreSQL directly) to ensure 100% API uptime.
 
