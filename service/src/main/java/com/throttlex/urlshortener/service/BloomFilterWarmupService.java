@@ -7,26 +7,28 @@ import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
-
-import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
 @Service
 public class BloomFilterWarmupService {
 
-    private final AtomicBoolean isWarmup = new AtomicBoolean(false);
+    private static final String WARMUP_KEY = "throttlex:bloom:warmup_active";
     
     private final BloomFilterOutboxRepository outboxRepository;
     private final BloomFilterKafkaPublisher kafkaPublisher;
     private final CircuitBreaker circuitBreaker;
+    private final StringRedisTemplate redisTemplate;
 
     public BloomFilterWarmupService(BloomFilterOutboxRepository outboxRepository,
                                     BloomFilterKafkaPublisher kafkaPublisher,
-                                    CircuitBreakerRegistry circuitBreakerRegistry) {
+                                    CircuitBreakerRegistry circuitBreakerRegistry,
+                                    StringRedisTemplate redisTemplate) {
         this.outboxRepository = outboxRepository;
         this.kafkaPublisher = kafkaPublisher;
         this.circuitBreaker = circuitBreakerRegistry.circuitBreaker("redisRateLimiter");
+        this.redisTemplate = redisTemplate;
     }
 
     /**
@@ -35,12 +37,17 @@ public class BloomFilterWarmupService {
      * to avoid False Negatives.
      */
     public boolean isWarmup() {
-        return isWarmup.get();
+        return Boolean.TRUE.equals(redisTemplate.hasKey(WARMUP_KEY));
     }
 
     public void setWarmup(boolean state) {
-        if (isWarmup.compareAndSet(!state, state)) {
-            log.info("Bloom Filter Warmup State changed to: {}", state);
+        if (state) {
+            redisTemplate.opsForValue().set(WARMUP_KEY, "true");
+            log.info("Bloom Filter Warmup State changed to: true (Globally in Redis)");
+        } else {
+            // Delete the key when warmup is complete
+            redisTemplate.delete(WARMUP_KEY);
+            log.info("Bloom Filter Warmup State changed to: false (Key deleted from Redis)");
         }
     }
 

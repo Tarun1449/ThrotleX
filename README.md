@@ -120,12 +120,12 @@ stateDiagram-v2
 ### 1. Advanced Fail-Open Recovery & Outbox Pattern
 When distributed cache infrastructure goes down, standard applications fail. ThrottleX is designed to continue handling high-volume writes even when Redis is offline.
 
-**Step-by-Step Failure Handling & State Resolution:**
+**Step-by-Step Failure Handling & Distributed State Resolution:**
 1. **Redis Crashes:** The Resilience4j Circuit Breaker transitions to `OPEN`. Rate Limiters default to `Allow` (Fail-Open), and the application continues to accept URL creations.
 2. **PostgreSQL Outbox Spooling:** Since we cannot update the Redis Bloom Filter, all new URL creations are saved directly into a PostgreSQL Outbox table. 
-3. **Redis Recovers:** The Circuit Breaker detects recovery and transitions to `CLOSED`. The system enters a **"Warmup State"**. During Warmup, the Bloom Filter temporarily returns `false` (bypass) for all checks because its data is stale.
+3. **Redis Recovers:** The Circuit Breaker detects recovery and transitions to `CLOSED`. The system enters a **"Warmup State"** by setting a global flag directly inside the recovered Redis cluster (`throttlex:bloom:warmup_active`). Because this flag is in Redis, all microservice instances instantly know to bypass the stale Bloom Filter and query Postgres directly to avoid False Negatives.
 4. **Kafka Drain:** The system pushes the entire PostgreSQL Outbox backlog into Kafka. Kafka smoothly streams the updates into the Redis Bloom Filter, preventing a massive "thundering herd" CPU spike.
-5. **State Restoration:** Once the Kafka Consumer processes the final Outbox message and the queue is completely empty, the system automatically flips the Bloom Filter state back to `Active`, and regular cache-penetration defense resumes.
+5. **State Restoration:** Once the Kafka Consumer processes the final Outbox message, it simply deletes the `warmup_active` key from Redis. Instantly, all instances detect the key is gone and safely resume normal cache-penetration defense.
 
 ### 2. Extreme Database Tuning (PostgreSQL)
 To support massive ingestion during Outbox spooling and analytics, the database is heavily tuned:
