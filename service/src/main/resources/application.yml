@@ -1,4 +1,6 @@
 spring:
+  application:
+    name: throttlex
   threads:
     virtual:
       enabled: true
@@ -84,7 +86,14 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,metrics,prometheus
+        include: health,metrics,prometheus,info
+  endpoint:
+    health:
+      show-details: always
+      show-components: always
+  health:
+    redis:
+      enabled: true
 
 throttlex:
   rate-limit:
