@@ -95,6 +95,13 @@ public class SnowflakeIdGenerator {
         return Instant.ofEpochMilli(extractTimestamp(snowflakeId));
     }
 
+    public static long getLowerBoundForTimestamp(long timestampMillis) {
+        if (timestampMillis < CUSTOM_EPOCH) {
+            return 0L;
+        }
+        return (timestampMillis - CUSTOM_EPOCH) << TIMESTAMP_SHIFT;
+    }
+
     private long timestamp() {
         return System.currentTimeMillis();
     }

@@ -1,6 +1,7 @@
 package com.throttlex.urlshortener.controller;
 
 import com.throttlex.urlshortener.dto.CreateUrlRequest;
+import com.throttlex.urlshortener.dto.UrlListResponse;
 import com.throttlex.urlshortener.dto.UrlResponse;
 import com.throttlex.urlshortener.service.UrlShortenerService;
 import jakarta.validation.Valid;
@@ -11,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/urls")
@@ -33,5 +35,13 @@ public class UrlShortenerController {
         headers.setLocation(URI.create(originalUrl));
         
         return new ResponseEntity<>(headers, HttpStatus.TEMPORARY_REDIRECT); // 307 Redirect
+    }
+
+    @GetMapping
+    public ResponseEntity<List<UrlListResponse>> getUrls(
+            @RequestParam(required = false) Long cursor,
+            @RequestParam(defaultValue = "10") int limit) {
+        List<UrlListResponse> urls = urlShortenerService.getUrls(cursor, limit);
+        return ResponseEntity.ok(urls);
     }
 }

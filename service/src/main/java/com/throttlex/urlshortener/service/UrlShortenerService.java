@@ -2,6 +2,7 @@ package com.throttlex.urlshortener.service;
 
 import com.throttlex.urlshortener.dto.CreateUrlRequest;
 import com.throttlex.urlshortener.dto.UrlCacheDto;
+import com.throttlex.urlshortener.dto.UrlListResponse;
 import com.throttlex.urlshortener.dto.UrlResponse;
 import com.throttlex.urlshortener.entity.Url;
 import com.throttlex.urlshortener.repository.BloomFilterOutboxRepository;
@@ -17,6 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.CachePut;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +26,8 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -80,7 +84,7 @@ public class UrlShortenerService {
             circuitBreaker.executeRunnable(() -> urlBloomFilter.add(shortCode));
         } catch (Exception e) {
             log.warn("Bloom filter add failed (Redis down?), saving to Outbox. ShortCode: {}", shortCode);
-            outboxRepository.save(new com.throttlex.urlshortener.entity.BloomFilterOutbox(shortCode));
+            outboxRepository.save(new com.throttlex.urlshortener.entity.BloomFilterOutbox(snowflakeIdGenerator.nextId(), shortCode));
         }
         
         // Write-Through to Redis Cache instantly!
@@ -152,5 +156,26 @@ public class UrlShortenerService {
 
         // Return the clean, serializable DTO for Redis to save
         return new UrlCacheDto(url.getOriginalUrl(), url.getExpiresAt());
+    }
+
+    @Transactional(readOnly = true)
+    public List<UrlListResponse> getUrls(Long cursorId, int limit) {
+        PageRequest pageRequest = PageRequest.of(0, limit);
+        List<Url> urls;
+
+        if (cursorId == null) {
+            urls = urlRepository.findByOrderByIdDesc(pageRequest);
+        } else {
+            urls = urlRepository.findByIdLessThanOrderByIdDesc(cursorId, pageRequest);
+        }
+
+        return urls.stream().map(url -> new UrlListResponse(
+                url.getId(),
+                url.getShortCode(),
+                url.getOriginalUrl(),
+                url.getCreatedAt(),
+                url.getExpiresAt(),
+                0L // Placeholder for clicks
+        )).collect(Collectors.toList());
     }
 }

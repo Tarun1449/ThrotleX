@@ -1,27 +1,22 @@
 package com.throttlex.urlshortener.entity;
 
 import jakarta.persistence.*;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.LocalDateTime;
 
+import com.throttlex.common.entity.BaseEntity;
+
 @Entity
-@Table(
-        name = "bloom_filter_outbox",
-        indexes = {
-                @Index(name = "idx_outbox_scan", columnList = "processed, id, short_code")
-        }
-)
+@Table(name = "bloom_filter_outbox")
 @Getter
 @Setter
 @NoArgsConstructor
-public class BloomFilterOutbox {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+@EqualsAndHashCode(callSuper = true)
+public class BloomFilterOutbox extends BaseEntity {
 
     @Column(name = "short_code", nullable = false, length = 10)
     private String shortCode;
@@ -29,12 +24,9 @@ public class BloomFilterOutbox {
     @Column(name = "processed", nullable = false)
     private boolean processed = false;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
-
-    public BloomFilterOutbox(String shortCode) {
+    public BloomFilterOutbox(Long id, String shortCode) {
+        this.setId(id);
         this.shortCode = shortCode;
         this.processed = false;
-        this.createdAt = LocalDateTime.now();
     }
 }
