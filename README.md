@@ -117,14 +117,22 @@ stateDiagram-v2
 
 ## 🏗️ Architecture & Design Patterns
 
-### 1. Interceptor & Strategy Patterns
+### 1. Event-Driven Distributed Task Queue (Apache Kafka)
+Instead of introducing complex external task queue frameworks (like Celery or Sidekiq), **Kafka** acts as the backbone for all background processing, state synchronization, and decoupling. 
+
+**When is this queue used?**
+*   **Bloom Filter State Synchronization:** When a new short code is generated, the API responds to the user instantly (in <10ms). In the background, it drops an event into Kafka. The `BloomFilterSyncConsumer` picks it up and updates the Redis Bloom filter, entirely decoupling the heavy network operations from the user request thread.
+*   **System Recovery (Outbox Pattern):** If Redis crashes, the application saves new URL creations to a PostgreSQL "Outbox" table. The moment the Circuit Breaker detects Redis has recovered (State transitions to `CLOSED`), the system publishes the Outbox backlog into Kafka. Kafka smoothly queues and streams these updates to the recovered Bloom Filter, preventing a massive CPU spike (thundering herd) during recovery.
+*   **High-Volume Analytics (Coming Soon):** Redirection events will be published directly to Kafka, buffering the massive influx of clicks so ClickHouse can comfortably ingest them in large, efficient batches.
+
+**Why is it better?**
+*   **Load Buffering:** Kafka absorbs traffic spikes. If the system receives 10,000 URL creations per second, the database is written to quickly, but the Redis cache updates safely at its own pace through Kafka.
+*   **Durability & State Handling:** If a worker node crashes mid-sync, the message remains safely in Kafka until a healthy worker consumes it. This guarantees zero data loss and ensures distributed state consistency between PostgreSQL and Redis.
+
+### 2. Interceptor & Strategy Patterns
 Rate limiting logic is completely decoupled from the core business controllers. 
 *   A Spring `HandlerInterceptor` targets specific API paths (e.g., `GET` redirections).
 *   The `RateLimitStrategy` interface and `RateLimiterFactory` allow seamless swapping of throttling algorithms (Token Bucket, Fixed Window) without modifying the interceptor.
-
-### 2. Event-Driven Task Queue
-Instead of introducing complex external task queues (like Celery), **Kafka** acts as the backbone for background processing. 
-*   Example: The `BloomFilterSyncConsumer` listens to Kafka topics to safely update the Redis Bloom Filter in the background, keeping the primary API response times under 10ms.
 
 ### 3. Lazy-Refill Math (Lua)
 To prevent crushing the server with background threads trying to refill millions of rate-limit buckets every second, the Token Bucket Lua script uses "Lazy Refill" math. It calculates elapsed time and instantly drops tokens into the bucket *only* at the exact millisecond a user makes a request.
