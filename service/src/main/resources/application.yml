@@ -15,7 +15,7 @@ spring:
       max-lifetime: 600000         # 10 minutes
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     show-sql: false
     properties:
       hibernate:
@@ -24,6 +24,9 @@ spring:
         persistence:
           query:
             timeout: 10000         # 10 seconds JPA query timeout
+  sql:
+    init:
+      mode: always
   kafka:
     bootstrap-servers: localhost:9092
     producer:
@@ -35,6 +38,7 @@ spring:
     consumer:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      auto-offset-reset: earliest
       properties:
         spring.json.trusted.packages: "*"
   data:

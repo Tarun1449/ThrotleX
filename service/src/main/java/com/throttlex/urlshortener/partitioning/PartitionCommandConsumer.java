@@ -18,7 +18,9 @@ public class PartitionCommandConsumer {
 
     private final JdbcTemplate jdbcTemplate;
 
-    @KafkaListener(topics = "db-partition-commands", groupId = "partitioning-group")
+    private static final String TOPIC = "db-partition-commands";
+
+    @KafkaListener(topics = TOPIC, groupId = "partitioning-group")
     public void consumePartitionEvent(PartitionCreationEvent event) {
         log.info("Received partition creation request: Table={}, Year={}, Month={}", 
             event.getTable().getTableName(), event.getYear(), event.getMonth());

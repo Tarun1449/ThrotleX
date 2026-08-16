@@ -9,7 +9,7 @@ import java.time.Instant;
 
 @Entity
 @Table(name = "urls", indexes = {
-        @Index(name = "idx_url_short_code", columnList = "short_code", unique = true)
+        @Index(name = "idx_url_short_code", columnList = "short_code")
 })
 @Data
 @NoArgsConstructor
@@ -18,7 +18,7 @@ import java.time.Instant;
 @EqualsAndHashCode(callSuper = true)
 public class Url extends BaseEntity {
 
-    @Column(name = "short_code", nullable = false, unique = true, length = 20)
+    @Column(name = "short_code", nullable = false, length = 20)
     private String shortCode;
 
     @Column(name = "original_url", nullable = false, length = 2048)
