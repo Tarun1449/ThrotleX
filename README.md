@@ -129,7 +129,23 @@ When distributed cache infrastructure goes down, standard applications fail. Thr
 
 ### 2. Extreme Database Tuning (PostgreSQL)
 To support massive ingestion during Outbox spooling and analytics, the database is heavily tuned:
-*   **Monthly Partitioning:** Tables are natively partitioned by month. This makes querying historical data extremely fast and allows instant deletion of old analytics data via `DROP PARTITION`, bypassing slow `DELETE` locks.
+*   **Asynchronous Event-Driven DDL:** Standard application startup scripts (like Flyway/Liquibase) block the main thread and can crash large microservice deployments if DDL operations on massive tables take too long. ThrottleX uses a background `PartitionScheduler` to publish DDL commands to Kafka. A dedicated consumer runs the `CREATE TABLE PARTITION OF` commands seamlessly in the background, without impacting the application's critical path.
+
+```mermaid
+graph TD
+    Cron((Cron: 3 Hours)) -->|Triggers| Scheduler[PartitionScheduler]
+    Scheduler -->|Publish Event| Topic[Kafka Topic: db-partition-commands]
+    Topic -->|Consume Event| Consumer[PartitionCommandConsumer]
+    
+    Consumer -->|1. Calculate Boundaries| Math{Snowflake Bit-Shift Math}
+    Math -->|2. Generate DDL| DDL[CREATE TABLE PARTITION OF]
+    
+    DDL -->|3. JDBC Execute| PG[(PostgreSQL Parent Table)]
+    PG -.->|4. Auto-Cascade| Index[Parent Indexes Natively Propagate to Partition]
+```
+
+*   **Snowflake ID Monthly Partitioning:** Tables like `urls` and `bloom_filter_outbox` use Snowflake IDs as their Primary Keys. Instead of creating expensive secondary indexes for `created_at` timestamps, ThrottleX natively extracts the creation timestamp directly from the bit-shifted Snowflake ID! This allows for flawless Time-Series Monthly Partitioning strictly using the primary key. Old analytics and outbox data can be instantly dropped via `DROP PARTITION`, bypassing slow `DELETE` locks.
+*   **Automated Index Propagation:** In PostgreSQL 11+, defining an index on a partitioned parent table automatically and instantly cascades to all current and future child partitions without requiring manual intervention.
 *   **Partial Indexes:** The Outbox table uses a Partial Index (`CREATE INDEX ON outbox(id) WHERE processed = false`). Since 99% of outbox messages are successfully processed, this keeps the active index size incredibly small (fitting entirely in RAM), resulting in lightning-fast lookups for the recovery cron jobs.
 *   **Auto-Vacuuming & Fillfactors:** PostgreSQL Auto-vacuum is tuned to automatically squeeze and reclaim index space. Tables utilize custom `FILLFACTOR` settings to enable HOT (Heap-Only Tuple) updates, preventing expensive page-splits during heavy write loads.
 
