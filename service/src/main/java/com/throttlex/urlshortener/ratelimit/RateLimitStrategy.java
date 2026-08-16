@@ -5,8 +5,9 @@ public interface RateLimitStrategy {
     /**
      * Determines whether the requested action is allowed under the current rate limit.
      * 
-     * @param key The unique identifier for the user (e.g., IP address or API key).
+     * @param shortCode The short URL being accessed.
+     * @param clientIp The IP address of the client making the request.
      * @return true if the request is allowed, false if rate limited.
      */
-    boolean tryAcquire(String key);
+    boolean tryAcquire(String shortCode, String clientIp);
 }

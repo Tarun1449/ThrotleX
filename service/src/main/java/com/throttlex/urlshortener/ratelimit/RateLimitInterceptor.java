@@ -23,11 +23,15 @@ public class RateLimitInterceptor implements HandlerInterceptor {
             return true;
         }
 
+        String requestURI = request.getRequestURI(); // e.g. /api/v1/urls/AbCdE
+        String[] parts = requestURI.split("/");
+        String shortCode = parts[parts.length - 1];
+
         String clientIp = request.getRemoteAddr();
 
-        if (!rateLimitService.isAllowed(clientIp)) {
+        if (!rateLimitService.isAllowed(shortCode, clientIp)) {
             response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
-            response.getWriter().write("Rate limit exceeded. Please try again later.");
+            response.getWriter().write("Rate limit exceeded for this URL. Please try again later.");
             return false; // Stop the request chain, do not reach the controller
         }
 

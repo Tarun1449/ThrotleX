@@ -1,5 +1,6 @@
 package com.throttlex.urlshortener.ratelimit;
 
+import com.throttlex.ratelimit.entity.RateLimitAlgorithm;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;

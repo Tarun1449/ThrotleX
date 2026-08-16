@@ -1,5 +1,6 @@
 package com.throttlex.urlshortener.ratelimit;
 
+import com.throttlex.ratelimit.entity.RateLimitAlgorithm;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -19,15 +20,15 @@ public class RateLimitService {
     }
 
     /**
-     * Checks if a request by the given key is allowed.
+     * Checks if a request by the given IP for a shortCode is allowed.
      * Fallback to ALLOW (Fail-Open) if Redis is down or throwing exceptions.
      */
-    public boolean isAllowed(String key) {
+    public boolean isAllowed(String shortCode, String clientIp) {
         try {
             RateLimitStrategy strategy = factory.getStrategy(currentAlgorithm);
-            return strategy.tryAcquire(key);
+            return strategy.tryAcquire(shortCode, clientIp);
         } catch (Exception e) {
-            log.error("Rate limiter failure for key {}. Failing open (allowing request). Error: {}", key, e.getMessage());
+            log.error("Rate limiter failure for code {} and IP {}. Failing open (allowing request). Error: {}", shortCode, clientIp, e.getMessage());
             return true;
         }
     }
