@@ -107,7 +107,7 @@ stateDiagram-v2
 
 *   **Language:** Java 21
 *   **Framework:** Spring Boot 3.x
-*   **Database:** PostgreSQL (with manual Fillfactor tuning)
+*   **Database:** PostgreSQL (with manual Fillfactor tuning & Partitioning)
 *   **Distributed Cache:** Redis (Lettuce for standard caching, Redisson for advanced structures)
 *   **Message Broker:** Apache Kafka (Event-driven tasks and streaming)
 *   **OLAP Database:** ClickHouse (Coming soon)
@@ -117,24 +117,31 @@ stateDiagram-v2
 
 ## 🏗️ Architecture & Design Patterns
 
-### 1. Event-Driven Distributed Task Queue (Apache Kafka)
+### 1. Advanced Fail-Open Recovery & Outbox Pattern
+When distributed cache infrastructure goes down, standard applications fail. ThrottleX is designed to continue handling high-volume writes even when Redis is offline.
+
+**Step-by-Step Failure Handling & State Resolution:**
+1. **Redis Crashes:** The Resilience4j Circuit Breaker transitions to `OPEN`. Rate Limiters default to `Allow` (Fail-Open), and the application continues to accept URL creations.
+2. **PostgreSQL Outbox Spooling:** Since we cannot update the Redis Bloom Filter, all new URL creations are saved directly into a PostgreSQL Outbox table. 
+3. **Redis Recovers:** The Circuit Breaker detects recovery and transitions to `CLOSED`. The system enters a **"Warmup State"**. During Warmup, the Bloom Filter temporarily returns `false` (bypass) for all checks because its data is stale.
+4. **Kafka Drain:** The system pushes the entire PostgreSQL Outbox backlog into Kafka. Kafka smoothly streams the updates into the Redis Bloom Filter, preventing a massive "thundering herd" CPU spike.
+5. **State Restoration:** Once the Kafka Consumer processes the final Outbox message and the queue is completely empty, the system automatically flips the Bloom Filter state back to `Active`, and regular cache-penetration defense resumes.
+
+### 2. Extreme Database Tuning (PostgreSQL)
+To support massive ingestion during Outbox spooling and analytics, the database is heavily tuned:
+*   **Monthly Partitioning:** Tables are natively partitioned by month. This makes querying historical data extremely fast and allows instant deletion of old analytics data via `DROP PARTITION`, bypassing slow `DELETE` locks.
+*   **Partial Indexes:** The Outbox table uses a Partial Index (`CREATE INDEX ON outbox(id) WHERE processed = false`). Since 99% of outbox messages are successfully processed, this keeps the active index size incredibly small (fitting entirely in RAM), resulting in lightning-fast lookups for the recovery cron jobs.
+*   **Auto-Vacuuming & Fillfactors:** PostgreSQL Auto-vacuum is tuned to automatically squeeze and reclaim index space. Tables utilize custom `FILLFACTOR` settings to enable HOT (Heap-Only Tuple) updates, preventing expensive page-splits during heavy write loads.
+
+### 3. Event-Driven Distributed Task Queue (Apache Kafka)
 Instead of introducing complex external task queue frameworks (like Celery or Sidekiq), **Kafka** acts as the backbone for all background processing, state synchronization, and decoupling. 
-
-**When is this queue used?**
-*   **Bloom Filter State Synchronization:** When a new short code is generated, the API responds to the user instantly (in <10ms). In the background, it drops an event into Kafka. The `BloomFilterSyncConsumer` picks it up and updates the Redis Bloom filter, entirely decoupling the heavy network operations from the user request thread.
-*   **System Recovery (Outbox Pattern):** If Redis crashes, the application saves new URL creations to a PostgreSQL "Outbox" table. The moment the Circuit Breaker detects Redis has recovered (State transitions to `CLOSED`), the system publishes the Outbox backlog into Kafka. Kafka smoothly queues and streams these updates to the recovered Bloom Filter, preventing a massive CPU spike (thundering herd) during recovery.
 *   **High-Volume Analytics (Coming Soon):** Redirection events will be published directly to Kafka, buffering the massive influx of clicks so ClickHouse can comfortably ingest them in large, efficient batches.
-
-**Why is it better?**
-*   **Load Buffering:** Kafka absorbs traffic spikes. If the system receives 10,000 URL creations per second, the database is written to quickly, but the Redis cache updates safely at its own pace through Kafka.
 *   **Durability & State Handling:** If a worker node crashes mid-sync, the message remains safely in Kafka until a healthy worker consumes it. This guarantees zero data loss and ensures distributed state consistency between PostgreSQL and Redis.
 
-### 2. Interceptor & Strategy Patterns
-Rate limiting logic is completely decoupled from the core business controllers. 
-*   A Spring `HandlerInterceptor` targets specific API paths (e.g., `GET` redirections).
-*   The `RateLimitStrategy` interface and `RateLimiterFactory` allow seamless swapping of throttling algorithms (Token Bucket, Fixed Window) without modifying the interceptor.
+### 4. Interceptor & Strategy Patterns
+Rate limiting logic is completely decoupled from the core business controllers via a Spring `HandlerInterceptor` targeting specific API paths. The `RateLimitStrategy` interface and `RateLimiterFactory` allow seamless swapping of throttling algorithms.
 
-### 3. Lazy-Refill Math (Lua)
+### 5. Lazy-Refill Math (Lua)
 To prevent crushing the server with background threads trying to refill millions of rate-limit buckets every second, the Token Bucket Lua script uses "Lazy Refill" math. It calculates elapsed time and instantly drops tokens into the bucket *only* at the exact millisecond a user makes a request.
 
 ---
