@@ -1,5 +1,6 @@
 package com.throttlex.urlshortener.ratelimit;
 
+import io.micrometer.core.instrument.Metrics;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -24,17 +25,29 @@ public class RateLimitInterceptor implements HandlerInterceptor {
         }
 
         String requestURI = request.getRequestURI(); // e.g. /api/v1/urls/AbCdE
+        if (requestURI.equals("/api/v1/urls") || requestURI.equals("/api/v1/urls/") || requestURI.startsWith("/actuator") || requestURI.equals("/error")) {
+            return true;
+        }
+
         String[] parts = requestURI.split("/");
+        if (parts.length == 0) {
+            return true;
+        }
         String shortCode = parts[parts.length - 1];
+        if (shortCode.isEmpty() || shortCode.equalsIgnoreCase("urls") || shortCode.equalsIgnoreCase("api") || shortCode.equalsIgnoreCase("v1")) {
+            return true;
+        }
 
         String clientIp = request.getRemoteAddr();
 
         if (!rateLimitService.isAllowed(shortCode, clientIp)) {
+            Metrics.counter("throttlex.ratelimit.blocked").increment();
             response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
             response.getWriter().write("Rate limit exceeded for this URL. Please try again later.");
             return false; // Stop the request chain, do not reach the controller
         }
 
+        Metrics.counter("throttlex.ratelimit.allowed").increment();
         return true; // Allowed, continue to the controller
     }
 }

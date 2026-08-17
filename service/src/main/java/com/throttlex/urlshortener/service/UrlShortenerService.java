@@ -12,6 +12,7 @@ import com.throttlex.urlshortener.util.Base62Encoder;
 import com.throttlex.urlshortener.util.SnowflakeIdGenerator;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import io.micrometer.core.instrument.Metrics;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RBloomFilter;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -137,6 +138,7 @@ public class UrlShortenerService {
 
         // If it returns false, the shortCode DEFINITELY does not exist. Stop immediately!
         if (!mightExist) {
+            Metrics.counter("throttlex.bloom.filter.rejected").increment();
             log.debug("Bloom Filter check returned false for shortCode: {}", shortCode);
             throw new UrlNotFoundException("URL not found");
         }

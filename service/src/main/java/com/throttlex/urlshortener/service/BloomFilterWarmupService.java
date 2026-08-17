@@ -42,8 +42,8 @@ public class BloomFilterWarmupService {
 
     public void setWarmup(boolean state) {
         if (state) {
-            redisTemplate.opsForValue().set(WARMUP_KEY, "true");
-            log.info("Bloom Filter Warmup State changed to: true (Globally in Redis)");
+            redisTemplate.opsForValue().set(WARMUP_KEY, "true", java.time.Duration.ofSeconds(30));
+            log.info("Bloom Filter Warmup State changed to: true (Globally in Redis with 30s TTL)");
         } else {
             // Delete the key when warmup is complete
             redisTemplate.delete(WARMUP_KEY);

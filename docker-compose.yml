@@ -63,8 +63,11 @@ services:
     environment:
       - SPRING_PROFILES_ACTIVE=docker
       - SPRING_DATASOURCE_URL=jdbc:postgresql://throttlex-postgres:5432/throttlex_db
+      - SPRING_DATASOURCE_USERNAME=throttlex_user
+      - SPRING_DATASOURCE_PASSWORD=throttlex_password
       - SPRING_DATA_REDIS_HOST=throttlex-redis
       - SPRING_KAFKA_BOOTSTRAP_SERVERS=throttlex-kafka:9092
+    restart: unless-stopped
     depends_on:
       - postgres
       - redis
@@ -103,15 +106,15 @@ services:
       - prometheus
     restart: unless-stopped
 
-  # 8. Frontend Placeholder (For your Vibe-Coded UI)
-  # Uncomment this block once you have your Next.js/React Dockerfile ready.
-  # frontend:
-  #   build: ./frontend
-  #   container_name: throttlex-frontend
-  #   ports:
-  #     - "3001:3001" # Changed to 3001 since Grafana uses 3000
-  #   depends_on:
-  #     - api
+  # 8. Frontend React Dashboard
+  frontend:
+    build: ./ui
+    container_name: throttlex-frontend
+    ports:
+      - "3001:80"
+    depends_on:
+      - api
+    restart: unless-stopped
 
 volumes:
   postgres_data:

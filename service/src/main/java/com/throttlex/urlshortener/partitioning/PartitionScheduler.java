@@ -2,6 +2,8 @@ package com.throttlex.urlshortener.partitioning;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -15,7 +17,8 @@ public class PartitionScheduler {
 
     private final PartitionKafkaProducer partitionKafkaProducer;
 
-    // Run every 3 hours
+    // Run on startup and every 3 hours
+    @EventListener(ApplicationReadyEvent.class)
     @Scheduled(fixedRate = 3 * 60 * 60 * 1000)
     public void schedulePartitionChecks() {
         log.info("Starting automated database partition scheduling checks...");
