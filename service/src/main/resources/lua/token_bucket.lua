@@ -3,7 +3,7 @@ local rate_limit_key = KEYS[1]
 
 -- Args
 local capacity = tonumber(ARGV[1])
-local refill_rate = tonumber(ARGV[2])
+local window_seconds = tonumber(ARGV[2])
 local now = tonumber(ARGV[3])
 
 -- Read current state from Redis Hash
@@ -21,6 +21,7 @@ else
 
     -- Calculate tokens to add based on time elapsed
     local seconds_passed = math.max(0, now - last_refill)
+    local refill_rate = capacity / window_seconds
     local new_tokens = seconds_passed * refill_rate
 
     if new_tokens > 0 then
@@ -30,15 +31,15 @@ else
 end
 
 -- Check if we can consume 1 token
-if tokens > 0 then
+if tokens >= 1 then
     -- Consume 1 token
     tokens = tokens - 1
     
     -- Save back to Redis
     redis.call('HMSET', rate_limit_key, 'tokens', tokens, 'last_refill', last_refill)
     
-    -- Set an expiry so unused buckets are eventually deleted (e.g. 1 hour)
-    redis.call('EXPIRE', rate_limit_key, 3600)
+    -- Set an expiry so unused buckets are eventually deleted
+    redis.call('EXPIRE', rate_limit_key, math.max(window_seconds * 2, 3600))
     
     return 1 -- Allowed
 else

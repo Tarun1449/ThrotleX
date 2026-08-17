@@ -1,5 +1,7 @@
 package com.throttlex.urlshortener.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.throttlex.common.entity.BaseEntity;
 import com.throttlex.ratelimit.entity.RateLimitConfig;
 import jakarta.persistence.*;
@@ -16,6 +18,7 @@ import java.time.Instant;
 @AllArgsConstructor
 @Builder
 @EqualsAndHashCode(callSuper = true)
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class Url extends BaseEntity {
 
     @Column(name = "short_code", nullable = false, length = 20)
@@ -27,6 +30,7 @@ public class Url extends BaseEntity {
     @Column(name = "expires_at")
     private Instant expiresAt;
 
+    @JsonIgnore
     @OneToOne(mappedBy = "url", cascade = CascadeType.ALL, fetch = FetchType.LAZY, optional = true)
     private RateLimitConfig rateLimitConfig;
 }

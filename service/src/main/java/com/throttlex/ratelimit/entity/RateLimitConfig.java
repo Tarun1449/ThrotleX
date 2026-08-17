@@ -1,5 +1,7 @@
 package com.throttlex.ratelimit.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.throttlex.common.entity.BaseEntity;
 import com.throttlex.urlshortener.entity.Url;
 import jakarta.persistence.*;
@@ -12,8 +14,10 @@ import lombok.*;
 @AllArgsConstructor
 @Builder
 @EqualsAndHashCode(callSuper = true)
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class RateLimitConfig extends BaseEntity {
 
+    @JsonIgnore
     @OneToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "url_id", nullable = false, unique = true)
     @ToString.Exclude

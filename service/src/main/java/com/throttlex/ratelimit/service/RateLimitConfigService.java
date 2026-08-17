@@ -26,6 +26,7 @@ public class RateLimitConfigService {
      */
     @Cacheable(value = "rate_limit_configs", key = "#shortCode", unless = "#result == null")
     public RateLimitConfig getConfigByShortCode(String shortCode) {
+        log.debug("Cache miss for rate_limit_configs key: '{}'. Querying PostgreSQL database.", shortCode);
         long urlId = Base62Encoder.decode(shortCode);
         return rateLimitConfigRepository.findByUrlId(urlId).orElse(null);
     }

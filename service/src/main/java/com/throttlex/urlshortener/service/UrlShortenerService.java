@@ -22,6 +22,9 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.throttlex.common.exception.UrlNotFoundException;
+import com.throttlex.ratelimit.entity.RateLimitAlgorithm;
+import com.throttlex.ratelimit.entity.RateLimitConfig;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -76,6 +79,17 @@ public class UrlShortenerService {
                 .expiresAt(expiresAt)
                 .build();
         url.setId(id); // Set the Snowflake ID manually
+        
+        if (request.rateLimitAlgorithm() != null && request.rateLimitCapacity() != null && request.rateLimitWindowSeconds() != null) {
+            RateLimitConfig rateLimitConfig = RateLimitConfig.builder()
+                    .url(url)
+                    .algorithm(RateLimitAlgorithm.valueOf(request.rateLimitAlgorithm()))
+                    .limitCapacity(request.rateLimitCapacity())
+                    .windowSeconds(request.rateLimitWindowSeconds())
+                    .build();
+            rateLimitConfig.setId(snowflakeIdGenerator.nextId());
+            url.setRateLimitConfig(rateLimitConfig);
+        }
 
         urlRepository.save(url);
         
@@ -123,7 +137,8 @@ public class UrlShortenerService {
 
         // If it returns false, the shortCode DEFINITELY does not exist. Stop immediately!
         if (!mightExist) {
-            throw new RuntimeException("URL not found");
+            log.debug("Bloom Filter check returned false for shortCode: {}", shortCode);
+            throw new UrlNotFoundException("URL not found");
         }
         
         // 2. Fetch from Redis OR Postgres (Read-Through Cache)
@@ -152,7 +167,7 @@ public class UrlShortenerService {
 
         // 3. Query PostgreSQL passing the ID and the Month Boundaries to force Partition Pruning
         UrlProjection url = urlRepository.findByIdAndCreatedAtBetween(id, startOfMonth.toInstant(), endOfMonth.toInstant())
-                .orElseThrow(() -> new RuntimeException("URL not found"));
+                .orElseThrow(() -> new UrlNotFoundException("URL not found"));
 
         // Return the clean, serializable DTO for Redis to save
         return new UrlCacheDto(url.getOriginalUrl(), url.getExpiresAt());
@@ -175,7 +190,10 @@ public class UrlShortenerService {
                 url.getOriginalUrl(),
                 url.getCreatedAt(),
                 url.getExpiresAt(),
-                0L // Placeholder for clicks
+                0L, // Placeholder for clicks
+                url.getRateLimitConfig() != null ? url.getRateLimitConfig().getAlgorithm().name() : null,
+                url.getRateLimitConfig() != null ? url.getRateLimitConfig().getLimitCapacity() : null,
+                url.getRateLimitConfig() != null ? url.getRateLimitConfig().getWindowSeconds() : null
         )).collect(Collectors.toList());
     }
 }

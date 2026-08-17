@@ -1,6 +1,8 @@
 package com.throttlex.urlshortener.ratelimit;
 
 import com.throttlex.ratelimit.entity.RateLimitAlgorithm;
+import com.throttlex.ratelimit.entity.RateLimitConfig;
+import com.throttlex.ratelimit.service.RateLimitConfigService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -11,12 +13,11 @@ public class RateLimitService {
     private static final Logger log = LoggerFactory.getLogger(RateLimitService.class);
     
     private final RateLimiterFactory factory;
-    
-    // We can default to Token Bucket, but this could also be driven by config
-    private final RateLimitAlgorithm currentAlgorithm = RateLimitAlgorithm.TOKEN_BUCKET;
+    private final RateLimitConfigService configService;
 
-    public RateLimitService(RateLimiterFactory factory) {
+    public RateLimitService(RateLimiterFactory factory, RateLimitConfigService configService) {
         this.factory = factory;
+        this.configService = configService;
     }
 
     /**
@@ -25,7 +26,9 @@ public class RateLimitService {
      */
     public boolean isAllowed(String shortCode, String clientIp) {
         try {
-            RateLimitStrategy strategy = factory.getStrategy(currentAlgorithm);
+            RateLimitConfig config = configService.getConfigByShortCode(shortCode);
+            RateLimitAlgorithm algorithm = config != null ? config.getAlgorithm() : RateLimitAlgorithm.TOKEN_BUCKET;
+            RateLimitStrategy strategy = factory.getStrategy(algorithm);
             return strategy.tryAcquire(shortCode, clientIp);
         } catch (Exception e) {
             log.error("Rate limiter failure for code {} and IP {}. Failing open (allowing request). Error: {}", shortCode, clientIp, e.getMessage());

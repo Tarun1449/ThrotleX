@@ -14,6 +14,9 @@ public interface UrlRepository extends JpaRepository<Url, Long> {
     Optional<UrlProjection> findByIdAndCreatedAtBetween(Long id, Instant start, Instant end);
 
     // Cursor-based pagination
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"rateLimitConfig"})
     List<Url> findByOrderByIdDesc(org.springframework.data.domain.Pageable pageable);
+    
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"rateLimitConfig"})
     List<Url> findByIdLessThanOrderByIdDesc(Long id, org.springframework.data.domain.Pageable pageable);
 }

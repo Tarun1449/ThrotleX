@@ -44,28 +44,34 @@ public class TokenBucketRateLimiter implements RateLimitStrategy {
         RateLimitConfig config = configService.getConfigByShortCode(shortCode);
         
         int capacity = DEFAULT_MAX_TOKENS;
-        int refillRate = DEFAULT_REFILL_RATE;
+        int windowSeconds = 60;
         
         if (config != null) {
             capacity = config.getLimitCapacity();
-            // Refill rate is tokens per second. We calculate it based on windowSeconds.
-            // E.g., 100 capacity over 60 seconds = ~1.6 tokens per second. 
-            // We'll simplify and require integers for now, or just use capacity/windowSeconds.
-            refillRate = Math.max(1, config.getLimitCapacity() / config.getWindowSeconds());
+            windowSeconds = config.getWindowSeconds();
         }
         
-        // Args: [capacity, refill_rate, current_timestamp_in_seconds]
+        // Args: [capacity, window_seconds, current_timestamp_in_seconds]
         long currentTimestamp = Instant.now().getEpochSecond();
         
+        org.slf4j.LoggerFactory.getLogger(TokenBucketRateLimiter.class).debug(
+                "Hitting Redis TokenBucket script for key: {} | Capacity: {}, Window: {}s, Timestamp: {}", 
+                redisKey, capacity, windowSeconds, currentTimestamp);
+
         Long result = redisTemplate.execute(
                 redisScript,
                 keys,
                 String.valueOf(capacity),
-                String.valueOf(refillRate),
+                String.valueOf(windowSeconds),
                 String.valueOf(currentTimestamp)
         );
 
+        boolean allowed = result != null && result == 1L;
+        org.slf4j.LoggerFactory.getLogger(TokenBucketRateLimiter.class).debug(
+                "Redis TokenBucket result for key: {} => rawResult: {}, allowed: {}", 
+                redisKey, result, allowed);
+
         // 1 means allowed, 0 means blocked
-        return result != null && result == 1L;
+        return allowed;
     }
 }

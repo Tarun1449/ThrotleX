@@ -8,6 +8,9 @@ public record UrlListResponse(
         String originalUrl,
         Instant createdAt,
         Instant expiresAt,
-        Long clicks // Placeholder for analytics
+        Long clicks,
+        String rateLimitAlgorithm,
+        Integer rateLimitCapacity,
+        Integer rateLimitWindowSeconds
 ) {
 }

@@ -10,6 +10,9 @@ interface UrlItem {
   createdAt: string;
   expiresAt: string | null;
   clicks: number;
+  rateLimitAlgorithm?: string;
+  rateLimitCapacity?: number;
+  rateLimitWindowSeconds?: number;
 }
 
 const API_BASE = 'http://localhost:8080/api/v1/urls';
@@ -22,6 +25,11 @@ function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [cursor, setCursor] = useState<number | null>(null);
+
+  // Rate Limit State
+  const [rateLimitAlgorithm, setRateLimitAlgorithm] = useState('');
+  const [rateLimitCapacity, setRateLimitCapacity] = useState('');
+  const [rateLimitWindow, setRateLimitWindow] = useState('');
 
   const fetchUrls = async (currentCursor: number | null = null) => {
     try {
@@ -59,6 +67,11 @@ function Dashboard() {
     try {
       const body: any = { originalUrl: newUrl };
       if (expiryDays) body.expiryDays = parseInt(expiryDays);
+      if (rateLimitAlgorithm) {
+        body.rateLimitAlgorithm = rateLimitAlgorithm;
+        body.rateLimitCapacity = parseInt(rateLimitCapacity) || 100;
+        body.rateLimitWindowSeconds = parseInt(rateLimitWindow) || 60;
+      }
 
       const res = await fetch(API_BASE, {
         method: 'POST',
@@ -70,6 +83,9 @@ function Dashboard() {
         setIsModalOpen(false);
         setNewUrl('');
         setExpiryDays('');
+        setRateLimitAlgorithm('');
+        setRateLimitCapacity('');
+        setRateLimitWindow('');
         setCursor(null);
         setHasMore(true);
         fetchUrls(null);
@@ -102,6 +118,7 @@ function Dashboard() {
               <th>Created At</th>
               <th>Expires</th>
               <th>Clicks</th>
+              <th>Rate Limit</th>
             </tr>
           </thead>
           <tbody>
@@ -116,6 +133,11 @@ function Dashboard() {
                 <td>{new Date(url.createdAt).toLocaleDateString()}</td>
                 <td>{url.expiresAt ? new Date(url.expiresAt).toLocaleDateString() : 'Never'}</td>
                 <td>{url.clicks}</td>
+                <td>
+                  {url.rateLimitAlgorithm 
+                    ? <span className="badge">{url.rateLimitAlgorithm} ({url.rateLimitCapacity} req / {url.rateLimitWindowSeconds}s)</span>
+                    : <span className="text-muted">None</span>}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -162,7 +184,55 @@ function Dashboard() {
                   min="1"
                 />
               </div>
-              <div className="modal-actions">
+              
+              <hr style={{ margin: '1.5rem 0', borderColor: 'rgba(255,255,255,0.1)' }} />
+              
+              <div className="form-group">
+                <label>Rate Limit Algorithm</label>
+                <select 
+                  className="form-control" 
+                  value={rateLimitAlgorithm} 
+                  onChange={e => setRateLimitAlgorithm(e.target.value)}
+                  style={{ backgroundColor: 'rgba(0, 0, 0, 0.2)', color: 'white' }}
+                >
+                  <option value="">None</option>
+                  <option value="TOKEN_BUCKET">Token Bucket</option>
+                  <option value="FIXED_WINDOW">Fixed Window</option>
+                  <option value="SLIDING_WINDOW_LOG">Sliding Window Log</option>
+                  <option value="SLIDING_WINDOW_COUNTER">Sliding Window Counter</option>
+                </select>
+              </div>
+
+              {rateLimitAlgorithm && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div className="form-group">
+                    <label>Capacity</label>
+                    <input 
+                      type="number" 
+                      className="form-control" 
+                      value={rateLimitCapacity} 
+                      onChange={e => setRateLimitCapacity(e.target.value)} 
+                      placeholder="e.g. 100"
+                      min="1"
+                      required={!!rateLimitAlgorithm}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Window (Seconds)</label>
+                    <input 
+                      type="number" 
+                      className="form-control" 
+                      value={rateLimitWindow} 
+                      onChange={e => setRateLimitWindow(e.target.value)} 
+                      placeholder="e.g. 60"
+                      min="1"
+                      required={!!rateLimitAlgorithm}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="modal-actions" style={{ marginTop: '2rem' }}>
                 <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>Cancel</button>
                 <button type="submit" className="btn" disabled={loading}>
                   {loading ? 'Creating...' : 'Create'}

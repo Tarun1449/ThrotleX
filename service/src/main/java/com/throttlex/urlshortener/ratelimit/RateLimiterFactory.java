@@ -19,9 +19,13 @@ public class RateLimiterFactory {
     }
 
     public RateLimitStrategy getStrategy(RateLimitAlgorithm algorithm) {
-        RateLimitStrategy strategy = strategies.get(algorithm);
+        RateLimitStrategy strategy = null;
+        if (algorithm != null) {
+            strategy = strategies.get(algorithm);
+        }
         if (strategy == null) {
-            throw new IllegalArgumentException("Rate limiting algorithm not supported: " + algorithm);
+            // Default fallback to Token Bucket
+            strategy = strategies.get(RateLimitAlgorithm.TOKEN_BUCKET);
         }
         return strategy;
     }

@@ -15,9 +15,10 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        // Apply the rate limiter strictly to the core URL creation API endpoints.
+        // Apply the rate limiter strictly to URL redirection and API endpoints.
         registry.addInterceptor(rateLimitInterceptor)
-                .addPathPatterns("/api/v1/urls/**");
+                .addPathPatterns("/api/v1/urls/**", "/*")
+                .excludePathPatterns("/error", "/static/**", "/assets/**", "/favicon.ico", "/index.html");
     }
 
     @Override

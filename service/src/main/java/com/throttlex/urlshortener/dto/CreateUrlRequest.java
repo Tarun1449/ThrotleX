@@ -8,5 +8,9 @@ public record CreateUrlRequest(
         @URL(message = "Must be a valid URL")
         String originalUrl,
         
-        Integer expiryDays
+        Integer expiryDays,
+        
+        String rateLimitAlgorithm,
+        Integer rateLimitCapacity,
+        Integer rateLimitWindowSeconds
 ) {}

@@ -1,3 +1,12 @@
+logging:
+  level:
+    com.throttlex: DEBUG
+
+server:
+  error:
+    include-message: always
+    include-binding-errors: always
+
 spring:
   application:
     name: throttlex
