@@ -20,15 +20,21 @@ public class RateLimitConfigService {
     private final RateLimitConfigRepository rateLimitConfigRepository;
     private final UrlRepository urlRepository;
 
+    public static final RateLimitConfig DEFAULT_CONFIG = RateLimitConfig.builder()
+            .algorithm(com.throttlex.ratelimit.entity.RateLimitAlgorithm.TOKEN_BUCKET)
+            .limitCapacity(40)
+            .windowSeconds(40)
+            .build();
+
     /**
      * Fetches the rate limit config for a given shortCode.
      * Heavily cached in Redis to prevent DB hammering on every redirect.
      */
-    @Cacheable(value = "rate_limit_configs", key = "#shortCode", unless = "#result == null")
+    @Cacheable(value = "rate_limit_configs", key = "#shortCode")
     public RateLimitConfig getConfigByShortCode(String shortCode) {
         log.debug("Cache miss for rate_limit_configs key: '{}'. Querying PostgreSQL database.", shortCode);
         long urlId = Base62Encoder.decode(shortCode);
-        return rateLimitConfigRepository.findByUrlId(urlId).orElse(null);
+        return rateLimitConfigRepository.findByUrlId(urlId).orElse(DEFAULT_CONFIG);
     }
 
     /**

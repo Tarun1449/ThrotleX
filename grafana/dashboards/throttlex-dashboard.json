@@ -174,8 +174,8 @@
       "type": "stat",
       "targets": [
         {
-          "expr": "sum(increase(cache_db_fallback_total[1h])) or vector(0)",
-          "legendFormat": "DB Fallbacks (Past Hour)",
+          "expr": "sum(rate(cache_db_fallback_total[1m])) or vector(0)",
+          "legendFormat": "Live DB Fallback Rate (req/s)",
           "refId": "A"
         }
       ]

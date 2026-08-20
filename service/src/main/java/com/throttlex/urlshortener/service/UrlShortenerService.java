@@ -43,6 +43,7 @@ public class UrlShortenerService {
     private final CircuitBreaker circuitBreaker;
     private final BloomFilterWarmupService warmupService;
     private final BloomFilterOutboxRepository outboxRepository;
+    private final com.throttlex.ratelimit.service.RateLimitConfigService rateLimitConfigService;
 
     @Autowired
     @Lazy
@@ -55,13 +56,15 @@ public class UrlShortenerService {
                                RBloomFilter<String> urlBloomFilter,
                                CircuitBreakerRegistry circuitBreakerRegistry,
                                BloomFilterWarmupService warmupService,
-                               BloomFilterOutboxRepository outboxRepository) {
+                               BloomFilterOutboxRepository outboxRepository,
+                               com.throttlex.ratelimit.service.RateLimitConfigService rateLimitConfigService) {
         this.urlRepository = urlRepository;
         this.snowflakeIdGenerator = snowflakeIdGenerator;
         this.urlBloomFilter = urlBloomFilter;
         this.circuitBreaker = circuitBreakerRegistry.circuitBreaker("redisRateLimiter");
         this.warmupService = warmupService;
         this.outboxRepository = outboxRepository;
+        this.rateLimitConfigService = rateLimitConfigService;
     }
 
     @Transactional
@@ -81,29 +84,42 @@ public class UrlShortenerService {
                 .build();
         url.setId(id); // Set the Snowflake ID manually
         
-        if (request.rateLimitAlgorithm() != null && request.rateLimitCapacity() != null && request.rateLimitWindowSeconds() != null) {
-            RateLimitConfig rateLimitConfig = RateLimitConfig.builder()
-                    .url(url)
-                    .algorithm(RateLimitAlgorithm.valueOf(request.rateLimitAlgorithm()))
-                    .limitCapacity(request.rateLimitCapacity())
-                    .windowSeconds(request.rateLimitWindowSeconds())
-                    .build();
-            rateLimitConfig.setId(snowflakeIdGenerator.nextId());
-            url.setRateLimitConfig(rateLimitConfig);
-        }
+        RateLimitAlgorithm algo = request.rateLimitAlgorithm() != null ? RateLimitAlgorithm.valueOf(request.rateLimitAlgorithm()) : RateLimitAlgorithm.TOKEN_BUCKET;
+        int capacity = request.rateLimitCapacity() != null ? request.rateLimitCapacity() : 40;
+        int window = request.rateLimitWindowSeconds() != null ? request.rateLimitWindowSeconds() : 40;
+
+        RateLimitConfig rateLimitConfig = RateLimitConfig.builder()
+                .url(url)
+                .algorithm(algo)
+                .limitCapacity(capacity)
+                .windowSeconds(window)
+                .build();
+        rateLimitConfig.setId(snowflakeIdGenerator.nextId());
+        url.setRateLimitConfig(rateLimitConfig);
 
         urlRepository.save(url);
         
-        // Add to Bloom Filter (Fail-Safe: If Redis is full, save to Outbox)
-        try {
-            circuitBreaker.executeRunnable(() -> urlBloomFilter.add(shortCode));
-        } catch (Exception e) {
-            log.warn("Bloom filter add failed (Redis down?), saving to Outbox. ShortCode: {}", shortCode);
+        // Add to Bloom Filter (Fail-Safe: If Redis is full or null, save to Outbox)
+        if (urlBloomFilter != null) {
+            try {
+                circuitBreaker.executeRunnable(() -> urlBloomFilter.add(shortCode));
+            } catch (Exception e) {
+                log.warn("Bloom filter add failed (Redis down?), saving to Outbox. ShortCode: {}", shortCode);
+                outboxRepository.save(new com.throttlex.urlshortener.entity.BloomFilterOutbox(snowflakeIdGenerator.nextId(), shortCode));
+            }
+        } else {
             outboxRepository.save(new com.throttlex.urlshortener.entity.BloomFilterOutbox(snowflakeIdGenerator.nextId(), shortCode));
         }
         
         // Write-Through to Redis Cache instantly!
         self.pushToCache(shortCode, new UrlCacheDto(url.getOriginalUrl(), url.getExpiresAt()));
+        if (url.getRateLimitConfig() != null) {
+            try {
+                rateLimitConfigService.saveOrUpdateConfig(shortCode, url.getRateLimitConfig());
+            } catch (Exception e) {
+                log.warn("Failed to write-through rate limit config to cache for shortCode: {}", shortCode, e);
+            }
+        }
 
         return new UrlResponse(
                 url.getShortCode(),
@@ -123,8 +139,8 @@ public class UrlShortenerService {
         // 1. Check Bloom Filter first (O(1) time complexity)
         boolean mightExist = true; // Fail-Open: Assume it exists if Redis crashes
 
-        // If Redis is actively down, OR we are syncing the Outbox via Kafka, bypass the Bloom Filter
-        if (circuitBreaker.getState() != CircuitBreaker.State.CLOSED || warmupService.isWarmup()) {
+        // If Redis is actively down, OR urlBloomFilter is null, OR we are syncing the Outbox via Kafka, bypass the Bloom Filter
+        if (urlBloomFilter == null || circuitBreaker.getState() != CircuitBreaker.State.CLOSED || warmupService.isWarmup()) {
             mightExist = true; 
         } else {
             try {
@@ -138,7 +154,7 @@ public class UrlShortenerService {
 
         // If it returns false, the shortCode DEFINITELY does not exist. Stop immediately!
         if (!mightExist) {
-            Metrics.counter("throttlex.bloom.filter.rejected").increment();
+            Metrics.counter("¸").increment();
             log.debug("Bloom Filter check returned false for shortCode: {}", shortCode);
             throw new UrlNotFoundException("URL not found");
         }
@@ -154,7 +170,7 @@ public class UrlShortenerService {
         return cachedUrl.originalUrl();
     }
     
-    @Cacheable(value = "urls", key = "#shortCode", sync = true)
+    @Cacheable(value = "urls", key = "#shortCode")
     public UrlCacheDto getCachedUrl(String shortCode) {
         long id = Base62Encoder.decode(shortCode);
         

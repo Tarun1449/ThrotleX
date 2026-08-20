@@ -2,6 +2,8 @@ package com.throttlex.urlshortener.ratelimit;
 
 import com.throttlex.ratelimit.entity.RateLimitConfig;
 import com.throttlex.ratelimit.service.RateLimitConfigService;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -22,9 +24,12 @@ public class TokenBucketRateLimiter implements RateLimitStrategy {
     private static final int DEFAULT_MAX_TOKENS = 10;
     private static final int DEFAULT_REFILL_RATE = 2; // Tokens per second
 
-    public TokenBucketRateLimiter(StringRedisTemplate redisTemplate, RateLimitConfigService configService) {
+    private final CircuitBreaker circuitBreaker;
+
+    public TokenBucketRateLimiter(StringRedisTemplate redisTemplate, RateLimitConfigService configService, CircuitBreakerRegistry circuitBreakerRegistry) {
         this.redisTemplate = redisTemplate;
         this.configService = configService;
+        this.circuitBreaker = circuitBreakerRegistry.circuitBreaker("redisRateLimiter");
         
         // Load the Lua script once during initialization
         this.redisScript = new DefaultRedisScript<>();
@@ -58,13 +63,16 @@ public class TokenBucketRateLimiter implements RateLimitStrategy {
                 "Hitting Redis TokenBucket script for key: {} | Capacity: {}, Window: {}s, Timestamp: {}", 
                 redisKey, capacity, windowSeconds, currentTimestamp);
 
-        Long result = redisTemplate.execute(
+        final int finalCapacity = capacity;
+        final int finalWindowSeconds = windowSeconds;
+
+        Long result = circuitBreaker.executeSupplier(() -> redisTemplate.execute(
                 redisScript,
                 keys,
-                String.valueOf(capacity),
-                String.valueOf(windowSeconds),
+                String.valueOf(finalCapacity),
+                String.valueOf(finalWindowSeconds),
                 String.valueOf(currentTimestamp)
-        );
+        ));
 
         boolean allowed = result != null && result == 1L;
         org.slf4j.LoggerFactory.getLogger(TokenBucketRateLimiter.class).debug(

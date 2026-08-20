@@ -60,15 +60,15 @@ spring:
       database: 0
       ssl:
         enabled: false
-      timeout: 300ms
-      connect-timeout: 500ms
+      timeout: 200ms
+      connect-timeout: 300ms
       lettuce:
         pool:
           enabled: true
-          max-active: 16
-          max-idle: 8
-          min-idle: 2
-          max-wait: 500ms
+          max-active: 64
+          max-idle: 32
+          min-idle: 8
+          max-wait: 1000ms
           time-between-eviction-runs: 30s
 
 resilience4j:
@@ -76,13 +76,13 @@ resilience4j:
     instances:
       redisRateLimiter:
         sliding-window-type: COUNT_BASED
-        sliding-window-size: 50
-        minimum-number-of-calls: 20
+        sliding-window-size: 10
+        minimum-number-of-calls: 3
         failure-rate-threshold: 50
         slow-call-rate-threshold: 50
         slow-call-duration-threshold: 200ms
-        wait-duration-in-open-state: 10s
-        permitted-number-of-calls-in-half-open-state: 5
+        wait-duration-in-open-state: 15s
+        permitted-number-of-calls-in-half-open-state: 3
         automatic-transition-from-open-to-half-open-enabled: true
 
   bulkhead:

@@ -34,7 +34,22 @@ public class SyncFallbackCache implements Cache {
                 redisCache.getName(),
                 Caffeine.newBuilder()
                         .maximumSize(50_000)
-                        .expireAfterWrite(Duration.ofMillis(500))
+                        .expireAfter(new com.github.benmanes.caffeine.cache.Expiry<Object, Object>() {
+                            @Override
+                            public long expireAfterCreate(Object key, Object value, long currentTime) {
+                                // Jitter between 60 seconds (1 min) and 150 seconds (2.5 min)
+                                long jitterSeconds = java.util.concurrent.ThreadLocalRandom.current().nextLong(60, 151);
+                                return java.util.concurrent.TimeUnit.SECONDS.toNanos(jitterSeconds);
+                            }
+                            @Override
+                            public long expireAfterUpdate(Object key, Object value, long currentTime, long currentDuration) {
+                                return currentDuration;
+                            }
+                            @Override
+                            public long expireAfterRead(Object key, Object value, long currentTime, long currentDuration) {
+                                return currentDuration;
+                            }
+                        })
                         .build(),
                 false
         );
@@ -54,11 +69,11 @@ public class SyncFallbackCache implements Cache {
             }
         } catch (CallNotPermittedException e) {
             // Circuit is open, skip redis instantly
-            increment("cache.db.fallback");
+            increment("cache.caffeine.fallback");
             return callCaffeineWithLoader(key, valueLoader);
         } catch (Exception e) {
-            log.warn("[SyncFallbackCache] Redis get failed for key '{}'. Falling back to DB.", key, e);
-            increment("cache.db.fallback");
+            log.warn("[SyncFallbackCache] Redis get failed for key '{}'. Falling back to L1 Caffeine Cache.", key, e);
+            increment("cache.caffeine.fallback");
             return callCaffeineWithLoader(key, valueLoader);
         }
 
@@ -90,10 +105,10 @@ public class SyncFallbackCache implements Cache {
             }
             return val;
         } catch (CallNotPermittedException e) {
-            increment("cache.db.fallback");
+            increment("cache.caffeine.fallback");
             return null;
         } catch (Exception e) {
-            increment("cache.db.fallback");
+            increment("cache.caffeine.fallback");
             return null;
         }
     }
@@ -197,6 +212,7 @@ public class SyncFallbackCache implements Cache {
 
     @Nullable
     private <T> T callDb(Object key, Callable<T> valueLoader) {
+        increment("cache.db.fallback");
         try {
             return valueLoader.call();
         } catch (Exception e) {

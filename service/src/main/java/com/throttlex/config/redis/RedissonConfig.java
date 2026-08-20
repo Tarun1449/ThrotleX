@@ -12,19 +12,25 @@ public class RedissonConfig {
 
     @Bean
     public RedissonClient redissonClient(RedisProperties redisProperties) {
-        Config config = new Config();
-        String prefix = redisProperties.ssl() != null && redisProperties.ssl().enabled() ? "rediss://" : "redis://";
-        String address = prefix + redisProperties.host() + ":" + redisProperties.port();
+        try {
+            Config config = new Config();
+            String prefix = redisProperties.ssl() != null && redisProperties.ssl().enabled() ? "rediss://" : "redis://";
+            String address = prefix + redisProperties.host() + ":" + redisProperties.port();
 
-        config.useSingleServer()
-                .setAddress(address)
-                .setDatabase(redisProperties.database());
+            config.useSingleServer()
+                    .setAddress(address)
+                    .setDatabase(redisProperties.database());
 
-        if (redisProperties.password() != null && !redisProperties.password().isBlank()) {
-            config.useSingleServer().setPassword(redisProperties.password());
+            if (redisProperties.password() != null && !redisProperties.password().isBlank()) {
+                config.useSingleServer().setPassword(redisProperties.password());
+            }
+
+            return Redisson.create(config);
+        } catch (Exception e) {
+            org.slf4j.LoggerFactory.getLogger(RedissonConfig.class)
+                    .warn("[RedissonConfig] Failed to initialize RedissonClient on startup (Redis down?). Booting in Fail-Open mode.", e);
+            return null;
         }
-
-        return Redisson.create(config);
     }
 
     /**
@@ -35,12 +41,23 @@ public class RedissonConfig {
      */
     @Bean
     public RBloomFilter<String> urlBloomFilter(RedissonClient redissonClient) {
+        if (redissonClient == null) {
+            org.slf4j.LoggerFactory.getLogger(RedissonConfig.class)
+                    .warn("[RedissonConfig] RedissonClient is null (Redis down?). Bloom filter operating in Fail-Open mode.");
+            return null;
+        }
+
         RBloomFilter<String> bloomFilter = redissonClient.getBloomFilter("urlBloomFilter");
         
-        // Only initialize if it doesn't already exist in Redis
-        if (!bloomFilter.isExists()) {
-            // expectedInsertions = 100,000,000, falseProbability = 0.01 (1%)
-            bloomFilter.tryInit(100_000_000L, 0.01);
+        try {
+            // Only initialize if it doesn't already exist in Redis
+            if (!bloomFilter.isExists()) {
+                // expectedInsertions = 100,000,000, falseProbability = 0.01 (1%)
+                bloomFilter.tryInit(100_000_000L, 0.01);
+            }
+        } catch (Exception e) {
+            org.slf4j.LoggerFactory.getLogger(RedissonConfig.class)
+                    .warn("[RedissonConfig] Could not initialize Bloom Filter on startup (Redis down?). Application will boot safely in Fail-Open mode.");
         }
         
         return bloomFilter;
