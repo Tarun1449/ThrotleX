@@ -27,7 +27,7 @@ function Dashboard() {
   const [cursor, setCursor] = useState<number | null>(null);
 
   // Rate Limit State
-  const [rateLimitAlgorithm, setRateLimitAlgorithm] = useState('');
+  const [rateLimitAlgorithm, setRateLimitAlgorithm] = useState('TOKEN_BUCKET');
   const [rateLimitCapacity, setRateLimitCapacity] = useState('');
   const [rateLimitWindow, setRateLimitWindow] = useState('');
 
@@ -195,11 +195,10 @@ function Dashboard() {
                   onChange={e => setRateLimitAlgorithm(e.target.value)}
                   style={{ backgroundColor: 'rgba(0, 0, 0, 0.2)', color: 'white' }}
                 >
-                  <option value="">None</option>
-                  <option value="TOKEN_BUCKET">Token Bucket</option>
-                  <option value="FIXED_WINDOW">Fixed Window</option>
-                  <option value="SLIDING_WINDOW_LOG">Sliding Window Log</option>
-                  <option value="SLIDING_WINDOW_COUNTER">Sliding Window Counter</option>
+                  <option value="TOKEN_BUCKET">Token Bucket (Active)</option>
+                  <option value="FIXED_WINDOW" disabled>Fixed Window (Coming Soon)</option>
+                  <option value="SLIDING_WINDOW_LOG" disabled>Sliding Window Log (Coming Soon)</option>
+                  <option value="SLIDING_WINDOW_COUNTER" disabled>Sliding Window Counter (Coming Soon)</option>
                 </select>
               </div>
 
