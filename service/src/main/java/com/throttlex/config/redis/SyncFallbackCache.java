@@ -3,6 +3,7 @@ package com.throttlex.config.redis;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.Cache;
@@ -21,6 +22,11 @@ public class SyncFallbackCache implements Cache {
     private final CircuitBreaker circuitBreaker;
     private final MeterRegistry meterRegistry;
 
+    private final Counter redisHitCounter;
+    private final Counter redisMissCounter;
+    private final Counter caffeineFallbackCounter;
+    private final Counter dbFallbackCounter;
+
     public SyncFallbackCache(
             RedisCache redisCache,
             CircuitBreaker circuitBreaker,
@@ -29,6 +35,18 @@ public class SyncFallbackCache implements Cache {
         this.redisCache = redisCache;
         this.circuitBreaker = circuitBreaker;
         this.meterRegistry = meterRegistry;
+
+        if (meterRegistry != null) {
+            this.redisHitCounter = Counter.builder("cache.redis.hit").tag("cache", redisCache.getName()).register(meterRegistry);
+            this.redisMissCounter = Counter.builder("cache.redis.miss").tag("cache", redisCache.getName()).register(meterRegistry);
+            this.caffeineFallbackCounter = Counter.builder("cache.caffeine.fallback").tag("cache", redisCache.getName()).register(meterRegistry);
+            this.dbFallbackCounter = Counter.builder("cache.db.fallback").tag("cache", redisCache.getName()).register(meterRegistry);
+        } else {
+            this.redisHitCounter = null;
+            this.redisMissCounter = null;
+            this.caffeineFallbackCounter = null;
+            this.dbFallbackCounter = null;
+        }
 
         this.caffeineCache = new CaffeineCache(
                 redisCache.getName(),
@@ -221,8 +239,13 @@ public class SyncFallbackCache implements Cache {
     }
 
     private void increment(String metric) {
-        if (meterRegistry != null) {
-            meterRegistry.counter(metric, "cache", getName()).increment();
+        if (redisHitCounter == null) return;
+        switch (metric) {
+            case "cache.redis.hit" -> redisHitCounter.increment();
+            case "cache.redis.miss" -> redisMissCounter.increment();
+            case "cache.caffeine.fallback" -> caffeineFallbackCounter.increment();
+            case "cache.db.fallback" -> dbFallbackCounter.increment();
+            default -> meterRegistry.counter(metric, "cache", getName()).increment();
         }
     }
 }

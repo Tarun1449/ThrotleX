@@ -170,13 +170,18 @@
       "gridPos": { "h": 8, "w": 6, "x": 18, "y": 10 },
       "id": 8,
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "title": "DB Fallback Triggers (Redis Outages)",
+      "title": "Outage Resilience: Caffeine RAM & DB Fallbacks",
       "type": "stat",
       "targets": [
         {
-          "expr": "sum(rate(cache_db_fallback_total[1m])) or vector(0)",
-          "legendFormat": "Live DB Fallback Rate (req/s)",
+          "expr": "sum(rate(cache_caffeine_fallback_total[1m])) or vector(0)",
+          "legendFormat": "L1 Caffeine RAM Rescues (req/s)",
           "refId": "A"
+        },
+        {
+          "expr": "sum(rate(cache_db_fallback_total[1m])) or vector(0)",
+          "legendFormat": "True PostgreSQL Queries (req/s)",
+          "refId": "B"
         }
       ]
     },
