@@ -154,7 +154,7 @@ public class UrlShortenerService {
 
         // If it returns false, the shortCode DEFINITELY does not exist. Stop immediately!
         if (!mightExist) {
-            Metrics.counter("¸").increment();
+            Metrics.counter("throttlex.bloom.filter.rejected").increment();
             log.debug("Bloom Filter check returned false for shortCode: {}", shortCode);
             throw new UrlNotFoundException("URL not found");
         }
