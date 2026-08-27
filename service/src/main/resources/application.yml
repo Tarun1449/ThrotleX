@@ -76,13 +76,13 @@ resilience4j:
     instances:
       redisRateLimiter:
         sliding-window-type: COUNT_BASED
-        sliding-window-size: 10
-        minimum-number-of-calls: 3
+        sliding-window-size: 100
+        minimum-number-of-calls: 20
         failure-rate-threshold: 50
         slow-call-rate-threshold: 50
         slow-call-duration-threshold: 200ms
         wait-duration-in-open-state: 15s
-        permitted-number-of-calls-in-half-open-state: 3
+        permitted-number-of-calls-in-half-open-state: 10
         automatic-transition-from-open-to-half-open-enabled: true
 
   bulkhead:

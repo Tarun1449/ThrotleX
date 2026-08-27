@@ -64,7 +64,24 @@ public class PartitionCommandConsumer {
         );
 
         log.info("Executing DDL: {}", sql);
-        jdbcTemplate.execute(sql);
+        try {
+            jdbcTemplate.execute(sql);
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            log.warn("Default partition constraint violation for {}. Migrating matching default rows...", partitionName);
+            String defaultTable = parentTable + "_default";
+            String migrateSql = String.format(
+                "CREATE TEMP TABLE tmp_mig AS SELECT * FROM %s WHERE id >= %d AND id < %d; " +
+                "DELETE FROM %s WHERE id >= %d AND id < %d; " +
+                "%s; " +
+                "INSERT INTO %s SELECT * FROM tmp_mig; " +
+                "DROP TABLE tmp_mig;",
+                defaultTable, startSnowflakeId, endSnowflakeId,
+                defaultTable, startSnowflakeId, endSnowflakeId,
+                sql,
+                parentTable
+            );
+            jdbcTemplate.execute(migrateSql);
+        }
         log.info("Successfully ensured partition {} exists.", partitionName);
     }
 }

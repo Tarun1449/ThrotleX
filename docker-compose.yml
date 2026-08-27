@@ -31,11 +31,15 @@ services:
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@throttlex-kafka:9093
       KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://throttlex-kafka:9092,EXTERNAL://localhost:9094
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       CLUSTER_ID: "5L6g3nShT-eMCtK--X86sw"
     ports:
       - "9094:9094"
@@ -47,6 +51,10 @@ services:
   clickhouse:
     image: clickhouse/clickhouse-server:latest-alpine
     container_name: throttlex-clickhouse
+    environment:
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=throttlex_password
+      - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
     ports:
       - "8123:8123"  # HTTP interface
       - "9000:9000"  # Native client interface
@@ -67,11 +75,14 @@ services:
       - SPRING_DATASOURCE_PASSWORD=throttlex_password
       - SPRING_DATA_REDIS_HOST=throttlex-redis
       - SPRING_KAFKA_BOOTSTRAP_SERVERS=throttlex-kafka:9092
+      - CLICKHOUSE_URL=jdbc:clickhouse://default:throttlex_password@throttlex-clickhouse:8123/throttlex
+      - JAVA_TOOL_OPTIONS=-Xms256m -Xmx512m
     restart: unless-stopped
     depends_on:
       - postgres
       - redis
       - kafka
+      - clickhouse
 
   # 6. Observability: Prometheus
   prometheus:

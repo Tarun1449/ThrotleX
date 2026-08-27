@@ -100,6 +100,14 @@
 			<artifactId>spring-kafka</artifactId>
 		</dependency>
 
+		<!-- ClickHouse JDBC Driver for Analytics -->
+		<dependency>
+			<groupId>com.clickhouse</groupId>
+			<artifactId>clickhouse-jdbc</artifactId>
+			<version>0.6.0</version>
+			<classifier>all</classifier>
+		</dependency>
+
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-actuator-test</artifactId>

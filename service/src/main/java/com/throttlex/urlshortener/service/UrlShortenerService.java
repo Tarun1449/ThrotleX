@@ -134,7 +134,6 @@ public class UrlShortenerService {
         return dto; // The return value is what Spring saves into Redis
     }
 
-    @Transactional(readOnly = true)
     public String getOriginalUrl(String shortCode) {
         // 1. Check Bloom Filter first (O(1) time complexity)
         boolean mightExist = true; // Fail-Open: Assume it exists if Redis crashes

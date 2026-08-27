@@ -76,6 +76,16 @@ public class SyncFallbackCache implements Cache {
     @Override
     @Nullable
     public <T> T get(Object key, Callable<T> valueLoader) {
+        // 1. Check L1 Caffeine Cache first
+        ValueWrapper caffeineVal = caffeineCache.get(key);
+        if (caffeineVal != null) {
+            increment("cache.caffeine.hit");
+            @SuppressWarnings("unchecked")
+            T value = (T) caffeineVal.get();
+            return value;
+        }
+
+        // 2. Check L2 Redis Cache if L1 missed
         try {
             ValueWrapper redisVal = circuitBreaker.executeSupplier(() -> redisCache.get(key));
 
@@ -83,6 +93,7 @@ public class SyncFallbackCache implements Cache {
                 increment("cache.redis.hit");
                 @SuppressWarnings("unchecked")
                 T value = (T) redisVal.get();
+                caffeineCache.put(key, value);
                 return value;
             }
         } catch (CallNotPermittedException e) {
@@ -114,14 +125,24 @@ public class SyncFallbackCache implements Cache {
     @Override
     @Nullable
     public ValueWrapper get(Object key) {
+        // 1. Check L1 Caffeine Cache first
+        ValueWrapper caffeineVal = caffeineCache.get(key);
+        if (caffeineVal != null) {
+            increment("cache.caffeine.hit");
+            return caffeineVal;
+        }
+
+        // 2. Check L2 Redis Cache
         try {
             ValueWrapper val = circuitBreaker.executeSupplier(() -> redisCache.get(key));
             if (val != null) {
                 increment("cache.redis.hit");
+                caffeineCache.put(key, val.get());
+                return val;
             } else {
                 increment("cache.redis.miss");
             }
-            return val;
+            return null;
         } catch (CallNotPermittedException e) {
             increment("cache.caffeine.fallback");
             return null;
@@ -134,14 +155,24 @@ public class SyncFallbackCache implements Cache {
     @Override
     @Nullable
     public <T> T get(Object key, @Nullable Class<T> type) {
+        // 1. Check L1 Caffeine Cache first
+        T caffeineVal = caffeineCache.get(key, type);
+        if (caffeineVal != null) {
+            increment("cache.caffeine.hit");
+            return caffeineVal;
+        }
+
+        // 2. Check L2 Redis Cache
         try {
             T val = circuitBreaker.executeSupplier(() -> redisCache.get(key, type));
             if (val != null) {
                 increment("cache.redis.hit");
+                caffeineCache.put(key, val);
+                return val;
             } else {
                 increment("cache.redis.miss");
             }
-            return val;
+            return null;
         } catch (CallNotPermittedException e) {
             increment("cache.db.fallback");
             return null;
